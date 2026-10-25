@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PayPilot AI: payment recovery assistant</title>
+<meta name="description" content="Find the overdue invoice that needs attention, understand why, and send an approved, personalised recovery message.">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>PayPilot <span>AI</span></h1>
+  <p class="sub">Payment recovery assistant</p>
+  <div id="status" class="status" aria-live="polite"></div>
+</header>
+<main id="main" tabindex="-1"></main>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="recovery" aria-current="page">Recovery</button>
+  <button data-tab="invoices">Invoices</button>
+  <button data-tab="activity">Activity</button>
+</nav>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>
