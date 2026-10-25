@@ -67,12 +67,12 @@ test('draft -> edit -> approve -> mark sent keeps an honest audit trail', async 
 
 test('AI draft uses Gemini when key is set, and falls back honestly on failure', async () => {
   let seen = null;
-  const ok = async (url, init) => { seen = { url, init }; return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'Hello from AI {{PAYMENT_LINK}}' }] } }] }) }; };
+  const ok = async (url, init) => { seen = { url, init }; return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'Hi Acme, a quick reminder that invoice INV-1 for 120.50 USD is overdue. You can pay here: {{PAYMENT_LINK}} Thank you.' }] } }] }) }; };
   let t = await boot({ env: { GEMINI_API_KEY: 'k' }, aiFetch: ok });
   try {
     const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
     const d = (await t.call('POST', `/api/invoices/${id}/drafts`, {})).json;
-    assert.match(d.source, /^AI: Google Gemini/); assert.equal(d.text, 'Hello from AI {{PAYMENT_LINK}}');
+    assert.match(d.source, /^AI: Google Gemini/); assert.match(d.text, /invoice INV-1 for 120.50 USD/);
     assert.ok(seen.url.includes('generativelanguage.googleapis.com')); assert.ok(!seen.url.includes('k=')); // key travels in a header, not the URL
     assert.ok(JSON.parse(seen.init.body).contents[0].parts[0].text.includes('INV-1'));
   } finally { t.close(); }

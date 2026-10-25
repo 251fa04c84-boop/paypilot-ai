@@ -16,17 +16,19 @@ Find the invoice that needs attention -> explain why -> recommend the next actio
 |---|---|
 | Invoice create / edit / void / delete, correct due-date and overdue maths | Real, unit-tested |
 | Recovery priority score and "why" explanation | Real and deterministic: computed from overdue days, amount and reminder history. **No randomness.** It ranks urgency; it does **not** predict whether a client will pay. |
-| AI-written recovery messages | Real when `GEMINI_API_KEY` is set (Google Gemini via the Gemini API). Without a key, the app uses a template and **labels the draft "template"**. If an AI call fails, it falls back to the template and says so. |
+| AI-written recovery messages | Real when `GEMINI_API_KEY` is set (Google Gemini via the Gemini API). Without a key, the app uses a template and **labels the draft "template"**. If an AI call fails, times out, or returns unsafe text, it falls back to the template and says why. Model output is treated as untrusted: it must be 40-1500 characters, mention the invoice, contain no invented links or unknown placeholders. |
 | Human approval | Real. Drafts are editable; nothing is approved until you press Approve. |
 | Sending the message | **Not automated.** PayPilot does not send email/SMS. After approval you copy the text, send it yourself, and press "I sent it". The audit trail says exactly this. |
-| PayPal Sandbox payment | Real when Sandbox credentials are configured: server creates an order, buyer approves on PayPal, server captures and **verifies status, amount, currency and invoice** before marking paid. |
+| PayPal Sandbox payment | Real when Sandbox credentials are configured: server creates an order, buyer approves on PayPal, server captures and **verifies status, amount, currency and invoice** before marking paid. **Verified live on 25 Oct 2026:** one demo invoice was paid with a Sandbox buyer account and marked paid only after the server-side capture check (the audit trail shows the capture id). |
+| Dashboard totals | Outstanding, overdue, at-risk (over 30 days late) and paid-via-PayPal totals per currency. Plain arithmetic, labelled "no AI". |
+| Abuse protection | In-memory rate limits on the API, AI drafting (protects the free AI quota) and payment routes. Resets when the server restarts. |
 | Without PayPal credentials | The app still works; payment buttons are disabled and the header shows "PayPal Sandbox: not configured". Nothing is faked. |
 | Storage | A JSON file (`data/db.json`). On Render's free plan the disk is not permanent, so data can reset after a restart or redeploy. |
 | Demo data | Clearly labelled "(demo)" and "DEMO" and removable with one button. |
 
 ## Try it
 
-### Option A: run locally (Node 20+)
+### Option A: run locally (Node 22 (the version it is tested on))
 ```bash
 git clone <this repo>
 cd paypilot-ai
@@ -61,12 +63,14 @@ node server.js          # no npm install needed: zero dependencies
 ```bash
 npm test      # or: node --test test/*.test.js
 ```
-27 automated tests (Node's built-in runner, no dependencies), covering:
+32 automated tests (Node's built-in runner, no dependencies), covering:
 - date and overdue calculations, validation, deterministic scoring and ordering
 - payment verification: matching capture, **amount/currency mismatch, wrong invoice, pending, unapproved order, duplicate payment**
+- AI output validation (invented links, wrong invoice, length, missing link), timeouts, API errors and honest source labels
+- summary totals and the rate limiter, including HTTP 429 with `Retry-After`
 - the HTTP API with a fake PayPal: success, **repeated/concurrent capture (PayPal called once)**, buyer cancel, unknown order ids, PayPal not configured, draft -> approve -> sent audit trail, AI success and AI failure fallback, static-file path traversal, security headers
 
-**Not covered by automated tests:** the live PayPal Sandbox network calls (the tests use a fake PayPal) and the live Gemini call. The user interface was smoke-tested manually in headless Chromium at phone width, with no automated UI tests.
+**Not covered by automated tests:** the live PayPal Sandbox network calls (the tests use a fake PayPal; the live flow was checked by hand once, see above) and the live Gemini call. The user interface was smoke-tested manually in headless Chromium at phone width, with no automated UI tests.
 
 ## Architecture
 

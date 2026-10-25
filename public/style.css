@@ -39,3 +39,5 @@ label{display:block;font-size:.85rem;color:var(--muted);margin:10px 0 4px}
 .back{margin:10px 0 0}
 .center{justify-content:center}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.tile{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg)}.big{font-weight:700;font-size:1.05rem;word-break:break-word}

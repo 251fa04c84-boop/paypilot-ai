@@ -48,10 +48,23 @@ function invoiceCard(inv, a, onOpen) {
     h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: onOpen }, 'Open')));
 }
 
+function tile(label, value, cur, sub) {
+  return h('div', { class: 'tile' }, h('div', { class: 'muted' }, label), h('div', { class: 'big' }, `${Number(value).toFixed(2)} ${cur}`), h('div', { class: 'muted' }, sub));
+}
+function totals(sum) {
+  return sum.map((c) => h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'name' }, `Your invoices (${c.currency})`), h('span', { class: 'badge none' }, 'plain maths, no AI')),
+    h('div', { class: 'tiles' },
+      tile('Outstanding', c.outstanding, c.currency, `${c.openCount} open`),
+      tile('Overdue', c.overdue, c.currency, `${c.overdueCount} invoice${c.overdueCount === 1 ? '' : 's'}`),
+      tile('At risk (30+ days late)', c.atRisk, c.currency, `${c.atRiskCount} invoice${c.atRiskCount === 1 ? '' : 's'}`),
+      tile('Paid via PayPal Sandbox', c.paidViaPayPal, c.currency, 'verified captures'))));
+}
+
 async function viewRecovery() {
   const q = await api('GET', '/api/recovery');
   const all = await api('GET', '/api/invoices');
-  main.replaceChildren(h('h2', {}, 'Needs attention'));
+  const sum = all.length ? await api('GET', '/api/summary') : [];
+  main.replaceChildren(...totals(sum), h('h2', {}, 'Needs attention'));
   if (!all.length) {
     main.append(h('div', { class: 'card empty' }, h('p', {}, 'No invoices yet. Add one, or load clearly-labelled demo data to try the workflow.'),
       h('div', { class: 'actions center' },
@@ -103,7 +116,7 @@ async function viewDetail() {
     h('p', { class: 'muted' }, `Issued ${inv.issueDate} · Due ${inv.dueDate} · Status: ${inv.status}${inv.demo ? ' · DEMO' : ''}`),
     h('p', {}, h('strong', {}, 'Recommended: '), a.recommendation),
     h('details', {}, h('summary', {}, `Why? (priority score ${a.score}/100)`), h('ul', { class: 'why' }, a.reasons.map((r) => h('li', {}, r))),
-      h('p', { class: 'muted' }, 'This score ranks which invoice to chase first from the invoice fields. It does not predict whether the client will pay.')));
+      h('p', { class: 'muted' }, 'Calculated by fixed rules from the invoice fields (not AI). The score ranks which invoice to chase first. It does not predict whether the client will pay.')));
   main.append(card);
 
   if (inv.status === 'open') {
@@ -139,7 +152,7 @@ function draftCard(d) {
   const card = h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'badge ' + (d.status === 'draft' ? 'medium' : 'low') }, d.status === 'draft' ? 'draft: not approved' : d.status === 'approved' ? 'approved: not sent yet' : 'sent by you'), h('span', { class: 'muted' }, d.source)));
   if (d.status === 'draft') {
     const ta = h('textarea', { maxlength: 2000, 'aria-label': 'Message text' }, d.text); ta.value = d.text;
-    card.append(ta, h('p', { class: 'muted' }, 'Review and edit. {{PAYMENT_LINK}} becomes a PayPal Sandbox payment link when you approve.'),
+    card.append(d.source.startsWith('AI:') ? h('p', { class: 'muted' }, 'AI-written text can contain mistakes. Check every detail before approving.') : h('p', { class: 'muted' }, 'This text comes from a fixed template, not AI.'), ta, h('p', { class: 'muted' }, 'Review and edit. {{PAYMENT_LINK}} becomes a PayPal Sandbox payment link when you approve.'),
       h('div', { class: 'actions' },
         h('button', { onclick: () => safe(async () => { await api('PUT', `/api/drafts/${d.id}`, { text: ta.value }); toast('Draft saved.'); }) }, 'Save edits'),
         h('button', { class: 'primary', onclick: () => safe(async () => { await api('PUT', `/api/drafts/${d.id}`, { text: ta.value }); await api('POST', `/api/drafts/${d.id}/approve`); render(); }) }, 'Approve message')));

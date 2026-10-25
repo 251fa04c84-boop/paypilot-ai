@@ -7,6 +7,8 @@ const P = require('./lib/priority');
 const { applyCapture } = require('./lib/payments');
 const { createPayPal } = require('./lib/paypal');
 const { generateDraft } = require('./lib/ai');
+const { summarize } = require('./lib/summary');
+const { createLimiter } = require('./lib/ratelimit');
 
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -26,6 +28,22 @@ function createApp(opts = {}) {
   const aiModel = env.GEMINI_MODEL || 'gemini-2.5-flash';
   const sender = env.SENDER_NAME || 'Accounts team';
   const inflight = new Set();
+  const lim = opts.limits || {};
+  const L = {
+    general: createLimiter({ windowMs: 60000, max: lim.general || 120 }),
+    draftIp: createLimiter({ windowMs: 60000, max: lim.draftIp || 5 }),
+    draftAll: createLimiter({ windowMs: 60000, max: lim.draftAll || 8 }),
+    pay: createLimiter({ windowMs: 60000, max: lim.pay || 20 }),
+  };
+  const clientIp = (req) => (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress) || 'unknown';
+  function checkLimits(req, p) {
+    const ip = clientIp(req), t = Date.now(), tests = [];
+    if (p.startsWith('/api/') || p.startsWith('/pay/') || p.startsWith('/paypal/')) tests.push([L.general, ip]);
+    if (req.method === 'POST' && /^\/api\/invoices\/[A-Za-z0-9-]+\/drafts$/.test(p)) tests.push([L.draftIp, ip], [L.draftAll, 'all']);
+    if (p.startsWith('/pay/') || (req.method === 'POST' && (/\/pay$/.test(p) || p === '/api/paypal/capture'))) tests.push([L.pay, ip]);
+    for (const [l, k] of tests) { const r = l.hit(k, t); if (!r.ok) return r; }
+    return null;
+  }
   const iso = () => now().toISOString();
   const todayStr = () => P.today(now());
 
@@ -138,6 +156,7 @@ function createApp(opts = {}) {
     const q = P.recoveryQueue(db.invoices, todayStr());
     return { json: q.map((a) => ({ assessment: a, invoice: db.invoices.find((i) => i.id === a.invoiceId) })) };
   });
+  route('GET', '/api/summary', () => ({ json: summarize(db.invoices, todayStr()) }));
   route('GET', '/api/actions', () => ({ json: db.actions.slice(-100).reverse() }));
 
   route('POST', '/api/invoices/:id/drafts', async ({ params, body }) => {
@@ -248,6 +267,8 @@ function createApp(opts = {}) {
         if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname);
         throw new HttpError(404, 'Not found.');
       }
+      const blocked = checkLimits(req, url.pathname);
+      if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
       const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
       const out = await m.r.handler({ params, body, query: Object.fromEntries(url.searchParams) });
@@ -258,7 +279,9 @@ function createApp(opts = {}) {
     } catch (e) {
       const status = e.status || 500;
       if (status === 500) console.error('Internal error:', e.message);
-      res.writeHead(status, { 'Content-Type': 'application/json' });
+      const hdr = { 'Content-Type': 'application/json' };
+      if (e.extra && e.extra.retryAfter) hdr['Retry-After'] = String(e.extra.retryAfter);
+      res.writeHead(status, hdr);
       res.end(JSON.stringify(Object.assign({ error: status === 500 ? 'Internal error.' : e.message }, e.extra || {})));
     }
   });
