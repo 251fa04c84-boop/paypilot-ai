@@ -56,8 +56,8 @@ test('rate limiter blocks after the limit and recovers after the window', () => 
   assert.equal(l.hit('ip', 1200).ok, true);
 });
 
-async function boot(limits) {
-  const app = createApp({ env: { APP_BASE_URL: 'http://t.local' }, store: createStore(null), limits, now: () => new Date('2026-03-10T12:00:00Z') });
+async function boot(limits, paypal) {
+  const app = createApp({ env: { APP_BASE_URL: 'http://t.local' }, store: createStore(null), limits, paypal, now: () => new Date('2026-03-10T12:00:00Z') });
   await new Promise((r) => app.server.listen(0, r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   const call = async (method, path, body) => {
@@ -80,5 +80,48 @@ test('API: summary endpoint and draft rate limit (429 + Retry-After)', async () 
     const blocked = await t.call('POST', `/api/invoices/${id}/drafts`, {});
     assert.equal(blocked.status, 429); assert.match(blocked.json.error, /Too many requests/); assert.ok(Number(blocked.headers.get('retry-after')) >= 1);
     assert.equal((await t.call('GET', '/api/invoices')).status, 200); // other routes still work
+  } finally { t.close(); }
+});
+
+test('AI model fallback: busy or retired models fall through; key errors do not', async () => {
+  const urls = [];
+  const seq = (...steps) => async (url) => { urls.push(url); const s = steps[urls.length - 1]; return s === 'ok' ? respond(GOOD)() : { ok: false, status: s, json: async () => ({ error: { message: 'x' } }) }; };
+  urls.length = 0;
+  const r1 = await generateDraft({ invoice: inv, assessment: a, apiKey: 'k', fetchImpl: seq(503, 'ok') });
+  assert.equal(r1.source, 'AI: Google Gemini (gemini-3.8-flash)'); assert.equal(urls.length, 2);
+  assert.ok(urls[0].includes('gemini-3.5-flash-lite'));
+  urls.length = 0;
+  const r2 = await generateDraft({ invoice: inv, assessment: a, apiKey: 'k', model: 'gemini-2.5-flash', fetchImpl: seq(404, 'ok') });
+  assert.equal(r2.source, 'AI: Google Gemini (gemini-3.5-flash-lite)'); assert.ok(urls[0].includes('gemini-2.5-flash:'));
+  urls.length = 0;
+  const r3 = await generateDraft({ invoice: inv, assessment: a, apiKey: 'k', fetchImpl: seq(403, 'ok') });
+  assert.equal(urls.length, 1); assert.match(r3.source, /template \(AI request failed: HTTP 403 - x\)/);
+  urls.length = 0;
+  const r4 = await generateDraft({ invoice: inv, assessment: a, apiKey: 'k', fetchImpl: seq(503, 503) });
+  assert.match(r4.source, /template \(AI request failed: HTTP 503 - x \(tried 2 models\)\)/);
+});
+
+test('API: tapping Pay twice reuses the open PayPal order instead of creating another', async () => {
+  let created = 0;
+  const pp = { configured: () => true, createOrder: async () => { created++; return { id: 'ORD' + created, approveUrl: 'https://sandbox.paypal.test/a/' + created }; } };
+  const t = await boot(undefined, pp);
+  try {
+    const id = (await t.call('POST', '/api/invoices', { client: 'A', number: 'N1', amount: 10, currency: 'USD', issueDate: '2026-01-01', dueDate: '2026-02-01' })).json.id;
+    const a1 = (await t.call('POST', `/api/invoices/${id}/pay`)).json.approveUrl;
+    const a2 = (await t.call('POST', `/api/invoices/${id}/pay`)).json.approveUrl;
+    assert.equal(a1, a2); assert.equal(created, 1); assert.equal(t.app.db.orders.length, 1);
+  } finally { t.close(); }
+});
+
+test('API: a paid invoice cannot approve a message, and its drafts are closed', async () => {
+  const t = await boot();
+  try {
+    const id = (await t.call('POST', '/api/invoices', { client: 'A', number: 'N9', amount: 10, currency: 'USD', issueDate: '2026-01-01', dueDate: '2026-02-01' })).json.id;
+    const d = (await t.call('POST', `/api/invoices/${id}/drafts`, {})).json;
+    await t.call('POST', `/api/invoices/${id}/mark-paid-manually`);
+    const detail = (await t.call('GET', `/api/invoices/${id}`)).json;
+    assert.equal(detail.drafts[0].status, 'discarded');
+    assert.equal((await t.call('POST', `/api/drafts/${d.id}/approve`)).status, 409);
+    assert.ok(detail.actions.some((x) => x.type === 'drafts_closed'));
   } finally { t.close(); }
 });

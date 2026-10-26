@@ -2,7 +2,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { createStore, addAction, newId } = require('./lib/store');
+const { createStore, addAction, newId, closeDrafts } = require('./lib/store');
 const P = require('./lib/priority');
 const { applyCapture } = require('./lib/payments');
 const { createPayPal } = require('./lib/paypal');
@@ -25,7 +25,7 @@ function createApp(opts = {}) {
   const paypal = opts.paypal || createPayPal({ clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET });
   const aiFetch = opts.aiFetch || fetch;
   const aiKey = env.GEMINI_API_KEY || '';
-  const aiModel = env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
   const inflight = new Set();
   const lim = opts.limits || {};
@@ -64,8 +64,10 @@ function createApp(opts = {}) {
   async function startPayment(inv) {
     if (!paypal.configured()) throw new HttpError(503, 'PayPal Sandbox is not configured on this server.');
     if (inv.status !== 'open') throw new HttpError(409, `Invoice is ${inv.status}; it cannot be paid.`);
+    const recent = db.orders.find((x) => x.invoiceId === inv.id && x.status === 'created' && x.approveUrl && Date.parse(iso()) - Date.parse(x.createdAt) < 600000);
+    if (recent) return recent.approveUrl; // double-tap or reopened link: reuse the open order instead of creating another
     const o = await paypal.createOrder({ invoice: inv, requestId: `pp-${newId()}`, returnUrl: `${baseUrl}/paypal/return`, cancelUrl: `${baseUrl}/paypal/cancel` });
-    db.orders.push({ orderId: o.id, invoiceId: inv.id, amount: inv.amount, currency: inv.currency, status: 'created', createdAt: iso() });
+    db.orders.push({ orderId: o.id, invoiceId: inv.id, amount: inv.amount, currency: inv.currency, status: 'created', approveUrl: o.approveUrl, createdAt: iso() });
     addAction(db, { invoiceId: inv.id, type: 'payment_link_created', detail: `PayPal Sandbox order ${o.id} created. Waiting for the buyer to approve.` }, iso());
     store.save();
     return o.approveUrl;
@@ -133,6 +135,7 @@ function createApp(opts = {}) {
     if (body.status === 'void' || body.status === 'open') upd.status = body.status;
     Object.assign(inv, upd);
     addAction(db, { invoiceId: inv.id, type: 'invoice_updated', detail: `Invoice ${inv.number} edited (status: ${inv.status}).` }, iso());
+    if (inv.status === 'void') closeDrafts(db, inv.id, 'the invoice was voided', iso());
     store.save();
     return { json: withA(inv) };
   });
@@ -149,6 +152,7 @@ function createApp(opts = {}) {
     if (inv.status !== 'open') throw new HttpError(409, `Invoice is ${inv.status}.`);
     inv.status = 'paid'; inv.paidAt = todayStr(); inv.paymentMethod = 'manual';
     addAction(db, { invoiceId: inv.id, type: 'marked_paid_manually', detail: 'You marked this invoice paid manually. No PayPal payment was verified.' }, iso());
+    closeDrafts(db, inv.id, 'the invoice was marked paid', iso());
     store.save();
     return { json: withA(inv) };
   });
@@ -188,6 +192,8 @@ function createApp(opts = {}) {
   route('POST', '/api/drafts/:id/approve', ({ params }) => {
     const d = find(db.drafts, params.id, 'Draft');
     if (d.status !== 'draft') throw new HttpError(409, `Draft is already ${d.status}.`);
+    const owner = find(db.invoices, d.invoiceId, 'Invoice');
+    if (owner.status !== 'open') throw new HttpError(409, `Invoice is ${owner.status}; no message is needed.`);
     d.text = d.text.split('{{PAYMENT_LINK}}').join(`${baseUrl}/pay/${d.invoiceId}`);
     d.status = 'approved'; d.approvedAt = iso();
     addAction(db, { invoiceId: d.invoiceId, type: 'draft_approved', detail: 'You approved the message. PayPilot does not send email: copy it and send it yourself, then confirm below.' }, iso());

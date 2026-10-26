@@ -46,7 +46,7 @@ node server.js          # no npm install needed: zero dependencies
 |---|---|---|
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal Sandbox payments | From developer.paypal.com -> Apps & Credentials -> **Sandbox** tab |
 | `GEMINI_API_KEY` | Real AI drafts | Free key from Google AI Studio. Free-tier prompts may be used by Google to improve its products, so use demo-level data. |
-| `GEMINI_MODEL` | optional | Default `gemini-2.5-flash` |
+| `GEMINI_MODEL` | optional | Default `gemini-3.5-flash-lite`. If it is busy, renamed or rate-limited, the app automatically tries `gemini-3.8-flash` next and labels the draft with the model that answered. |
 | `APP_BASE_URL` | PayPal return links | Render sets `RENDER_EXTERNAL_URL` automatically |
 | `SENDER_NAME` | optional | Signature on drafts |
 
@@ -63,10 +63,11 @@ node server.js          # no npm install needed: zero dependencies
 ```bash
 npm test      # or: node --test test/*.test.js
 ```
-32 automated tests (Node's built-in runner, no dependencies), covering:
+36 automated tests (Node's built-in runner, no dependencies), covering:
 - date and overdue calculations, validation, deterministic scoring and ordering
 - payment verification: matching capture, **amount/currency mismatch, wrong invoice, pending, unapproved order, duplicate payment**
 - AI output validation (invented links, wrong invoice, length, missing link), timeouts, API errors and honest source labels
+- AI model fallback (busy, retired or rate-limited models fall through to the next; key errors do not) and duplicate-payment-order protection
 - summary totals and the rate limiter, including HTTP 429 with `Retry-After`
 - the HTTP API with a fake PayPal: success, **repeated/concurrent capture (PayPal called once)**, buyer cancel, unknown order ids, PayPal not configured, draft -> approve -> sent audit trail, AI success and AI failure fallback, static-file path traversal, security headers
 

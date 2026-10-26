@@ -121,7 +121,7 @@ async function viewDetail() {
 
   if (inv.status === 'open') {
     const pay = h('div', { class: 'actions' },
-      h('button', { class: 'primary', disabled: !(state.health && state.health.paypal.configured), onclick: () => safe(async () => { const r = await api('POST', `/api/invoices/${inv.id}/pay`); location.href = r.approveUrl; }) }, 'Pay with PayPal Sandbox'),
+      h('button', { class: 'primary', disabled: !(state.health && state.health.paypal.configured), onclick: (ev) => { const b = ev.currentTarget; b.disabled = true; b.textContent = 'Opening PayPal…'; return safe(async () => { const r = await api('POST', `/api/invoices/${inv.id}/pay`); location.href = r.approveUrl; }).finally(() => { setTimeout(() => { b.disabled = false; b.textContent = 'Pay with PayPal Sandbox'; }, 4000); }); } }, 'Pay with PayPal Sandbox'),
       h('button', { onclick: () => safe(async () => { if (confirm('Mark as paid without a PayPal payment? It will be recorded as manual.')) { await api('POST', `/api/invoices/${inv.id}/mark-paid-manually`); render(); } }) }, 'Mark paid manually'),
       h('button', { onclick: () => safe(async () => { await api('PUT', `/api/invoices/${inv.id}`, { status: 'void' }); render(); }) }, 'Void'));
     card.append(pay);
@@ -131,11 +131,15 @@ async function viewDetail() {
   main.append(h('h2', {}, 'Recovery message'));
   const drafts = inv.drafts.slice().reverse();
   if (inv.status === 'open') {
-    main.append(h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => safe(async () => {
-      try { await api('POST', `/api/invoices/${inv.id}/drafts`, {}); }
-      catch (e) { if (e.data && e.data.canForce && confirm(e.message + '\n\nDraft one anyway?')) await api('POST', `/api/invoices/${inv.id}/drafts`, { force: true }); else if (!(e.data && e.data.canForce)) throw e; }
-      render();
-    }) }, drafts.length ? 'Draft a new message' : 'Draft a message')));
+    const label = drafts.length ? 'Draft a new message' : 'Draft a message';
+    main.append(h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: (ev) => {
+      const b = ev.currentTarget; b.disabled = true; b.textContent = 'Drafting… (up to 40 seconds)';
+      return safe(async () => {
+        try { await api('POST', `/api/invoices/${inv.id}/drafts`, {}); }
+        catch (e) { if (e.data && e.data.canForce && confirm(e.message + '\n\nDraft one anyway?')) await api('POST', `/api/invoices/${inv.id}/drafts`, { force: true }); else if (!(e.data && e.data.canForce)) throw e; }
+        render();
+      }).finally(() => { b.disabled = false; b.textContent = label; });
+    } }, label)));
   }
   if (!drafts.length) main.append(h('div', { class: 'card empty' }, 'No drafts yet.'));
   drafts.forEach((d) => main.append(draftCard(d)));
@@ -149,7 +153,7 @@ async function viewDetail() {
 }
 
 function draftCard(d) {
-  const card = h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'badge ' + (d.status === 'draft' ? 'medium' : 'low') }, d.status === 'draft' ? 'draft: not approved' : d.status === 'approved' ? 'approved: not sent yet' : 'sent by you'), h('span', { class: 'muted' }, d.source)));
+  const card = h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'badge ' + (d.status === 'draft' ? 'medium' : d.status === 'discarded' ? 'none' : 'low') }, d.status === 'draft' ? 'draft: not approved' : d.status === 'approved' ? 'approved: not sent yet' : d.status === 'discarded' ? 'closed: invoice paid or void' : 'sent by you'), h('span', { class: 'muted' }, d.source)));
   if (d.status === 'draft') {
     const ta = h('textarea', { maxlength: 2000, 'aria-label': 'Message text' }, d.text); ta.value = d.text;
     card.append(d.source.startsWith('AI:') ? h('p', { class: 'muted' }, 'AI-written text can contain mistakes. Check every detail before approving.') : h('p', { class: 'muted' }, 'This text comes from a fixed template, not AI.'), ta, h('p', { class: 'muted' }, 'Review and edit. {{PAYMENT_LINK}} becomes a PayPal Sandbox payment link when you approve.'),

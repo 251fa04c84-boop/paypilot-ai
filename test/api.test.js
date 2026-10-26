@@ -80,7 +80,7 @@ test('AI draft uses Gemini when key is set, and falls back honestly on failure',
   try {
     const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
     const d = (await t.call('POST', `/api/invoices/${id}/drafts`, {})).json;
-    assert.match(d.source, /template \(AI request failed: HTTP 429\)/);
+    assert.match(d.source, /template \(AI request failed: HTTP 429 \(tried 2 models\)\)/);
   } finally { t.close(); }
 });
 

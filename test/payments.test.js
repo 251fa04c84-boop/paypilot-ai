@@ -13,6 +13,12 @@ test('completed, matching capture marks invoice paid and logs it', () => {
   assert.equal(db.invoices[0].status, 'paid'); assert.equal(db.invoices[0].paymentRef, 'CAP1');
   assert.equal(r.status, 'captured'); assert.equal(db.actions[0].type, 'payment_captured');
 });
+test('paying an invoice closes its unsent drafts', () => {
+  const db = mk(); db.drafts.push({ id: 'd1', invoiceId: 'inv1', status: 'draft' }, { id: 'd2', invoiceId: 'inv1', status: 'approved' }, { id: 'd3', invoiceId: 'inv1', status: 'sent' });
+  applyCapture(db, rec(), ord());
+  assert.deepEqual(db.drafts.map((d) => d.status), ['discarded', 'discarded', 'sent']);
+  assert.ok(db.actions.some((a) => a.type === 'drafts_closed'));
+});
 test('amount mismatch is rejected and invoice stays open', () => {
   const db = mk(); const res = applyCapture(db, rec(), ord({ cap: { amount: { value: '1.00', currency_code: 'USD' } } }));
   assert.equal(res.outcome, 'failed'); assert.equal(db.invoices[0].status, 'open');
