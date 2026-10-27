@@ -44,3 +44,18 @@ details>summary{cursor:pointer;color:var(--cyan);padding:6px 0}
 .back{margin:10px 0 0}
 @media (prefers-reduced-motion:no-preference){.card{transition:border-color .2s,box-shadow .2s}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* Assistant & Autopilot Additions */
+.quick-pills{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px}
+.btn-pill{font-size:.8rem;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--navy);color:var(--cyan);cursor:pointer;min-height:auto}
+.btn-pill:hover{border-color:var(--cyan);background:var(--graphite)}
+.chat-thread{display:flex;flex-direction:column;gap:12px;margin:12px 0;max-height:480px;overflow-y:auto;padding-right:4px}
+.chat-msg{border-radius:14px;padding:12px 14px;font-size:.92rem;line-height:1.45;max-width:92%}
+.chat-msg.user{align-self:flex-end;background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.3));border:1px solid rgba(139,92,246,.4);color:var(--ink)}
+.chat-msg.assistant{align-self:flex-start;background:var(--navy);border:1px solid var(--line);color:var(--ink)}
+.agent-loop{display:flex;gap:4px;align-items:center;margin:8px 0;font-size:.78rem;color:var(--muted);overflow-x:auto;padding-bottom:4px}
+.agent-step{padding:2px 8px;border-radius:6px;border:1px solid var(--line);background:rgba(8,10,18,.6);white-space:nowrap}
+.agent-step.active{color:var(--cyan);border-color:var(--cyan);font-weight:700}
+.agent-step.done{color:var(--ok);border-color:var(--ok)}
+.agent-arrow{opacity:.4}
+

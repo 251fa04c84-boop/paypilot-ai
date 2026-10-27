@@ -7,7 +7,7 @@ const P = require('./lib/priority');
 const { applyCapture } = require('./lib/payments');
 const { createPayPal } = require('./lib/paypal');
 const { generateDraft, generateText } = require('./lib/ai');
-const { ACTIONS, APPROVAL_TTL_MS, evaluate, plan, snapshotHash, buildInterpretationPrompt, validateInterpretation } = require('./lib/agent');
+const { ACTIONS, APPROVAL_TTL_MS, evaluate, plan, snapshotHash, buildInterpretationPrompt, validateInterpretation, portfolioTriage, processAssistantQuery } = require('./lib/agent');
 const { summarize } = require('./lib/summary');
 const { createLimiter } = require('./lib/ratelimit');
 
@@ -49,8 +49,8 @@ function createApp(opts = {}) {
   function checkLimits(req, p) {
     const ip = clientIp(req), t = Date.now(), tests = [];
     if (p.startsWith('/api/') || p.startsWith('/pay/') || p.startsWith('/paypal/')) tests.push([L.general, ip]);
-    if (req.method === 'POST' && /^\/api\/invoices\/[A-Za-z0-9-]+\/(drafts|proposals|interpret)$/.test(p)) tests.push([L.draftIp, ip], [L.draftAll, 'all']);
-    if (p.startsWith('/pay/') || (req.method === 'POST' && (/\/pay$/.test(p) || /\/execute$/.test(p) || p === '/api/paypal/capture'))) tests.push([L.pay, ip]);
+    if (req.method === 'POST' && (/^\/api\/invoices\/[A-Za-z0-9-]+\/(drafts|proposals|interpret)$/.test(p) || p === '/api/assistant/chat' || p === '/api/agent/triage/apply')) tests.push([L.draftIp, ip], [L.draftAll, 'all']);
+    if (p.startsWith('/pay/') || (req.method === 'POST' && (/\/pay$/.test(p) || /\/execute$/.test(p) || p === '/api/paypal/capture' || p === '/api/paypal/webhook'))) tests.push([L.pay, ip]);
     for (const [l, k] of tests) { const r = l.hit(k, t); if (!r.ok) return r; }
     return null;
   }
@@ -197,6 +197,26 @@ function createApp(opts = {}) {
   });
   route('GET', '/api/summary', () => ({ json: summarize(db.invoices, todayStr()) }));
   route('GET', '/api/actions', () => ({ json: db.actions.slice(-100).reverse() }));
+  route('GET', '/api/actions/export', ({ query }) => {
+    const format = (query.format || 'csv').toLowerCase();
+    const list = db.actions.slice().reverse();
+    if (format === 'json') return { json: list };
+    const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+    const headers = ['Timestamp', 'Invoice ID', 'Invoice Number', 'Client', 'Event Type', 'Details', 'Proposal ID'];
+    const rows = list.map((a) => {
+      const inv = db.invoices.find((i) => i.id === a.invoiceId);
+      return [
+        escapeCsv(a.at),
+        escapeCsv(a.invoiceId),
+        escapeCsv(inv ? inv.number : ''),
+        escapeCsv(inv ? inv.client : ''),
+        escapeCsv(a.type),
+        escapeCsv(a.detail),
+        escapeCsv(a.proposalId || ''),
+      ].join(',');
+    });
+    return { csv: [headers.map(escapeCsv).join(','), ...rows].join('\r\n'), filename: `paypilot-audit-${todayStr()}.csv` };
+  });
 
   route('POST', '/api/invoices/:id/drafts', async ({ params, body }) => {
     const inv = find(db.invoices, params.id, 'Invoice');
@@ -249,6 +269,38 @@ function createApp(opts = {}) {
 
   route('POST', '/api/invoices/:id/pay', async ({ params }) => ({ json: { approveUrl: await startPayment(find(db.invoices, params.id, 'Invoice')) } }));
   route('POST', '/api/paypal/capture', async ({ body }) => ({ json: await capture(body.orderId) }));
+  route('POST', '/api/paypal/webhook', async ({ body }) => {
+    const event = body && body.event_type;
+    const resource = body && body.resource;
+    if (!event || !resource) throw new HttpError(400, 'Invalid webhook payload.');
+    let orderId = resource.id;
+    if (event.startsWith('PAYMENT.CAPTURE.') && resource.supplementary_data && resource.supplementary_data.related_ids) {
+      orderId = resource.supplementary_data.related_ids.order_id || orderId;
+    }
+    const rec = db.orders.find((o) => o.orderId === orderId);
+    if (!rec) return { json: { received: true, ignored: true, reason: 'Order not managed by PayPilot.' } };
+    addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `PayPal webhook received: ${event} for order ${orderId}.` }, iso());
+    let captureResult = null;
+    if (event === 'CHECKOUT.ORDER.APPROVED' || event === 'PAYMENT.CAPTURE.COMPLETED') {
+      try {
+        captureResult = await capture(orderId);
+      } catch (e) {
+        captureResult = { error: e.message };
+      }
+    }
+    store.save();
+    return { json: { received: true, event, orderId, captureResult } };
+  });
+  route('POST', '/api/demo/simulate-webhook', async ({ body }) => {
+    const orderId = body && body.orderId;
+    if (!orderId) throw new HttpError(400, 'orderId is required.');
+    const rec = db.orders.find((o) => o.orderId === orderId);
+    if (!rec) throw new HttpError(404, 'Order not found.');
+    addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `SIMULATED PayPal webhook: CHECKOUT.ORDER.APPROVED for order ${orderId}.` }, iso());
+    const res = await capture(orderId);
+    store.save();
+    return { json: { simulated: true, result: res } };
+  });
   route('GET', '/pay/:id', async ({ params }) => {
     const inv = db.invoices.find((i) => i.id === params.id);
     if (!inv) return { status: 404, html: page('Invoice not found', 'This payment link is not valid.') };
@@ -428,6 +480,96 @@ function createApp(opts = {}) {
     return { json: withA(inv) };
   });
 
+  route('GET', '/api/agent/triage', () => ({ json: portfolioTriage(db.invoices, ctx()) }));
+
+  route('POST', '/api/agent/triage/apply', async () => {
+    const triage = portfolioTriage(db.invoices, ctx());
+    const created = [];
+    for (const item of triage.items) {
+      if (!item.actionable || !item.proposedAction) continue;
+      const inv = db.invoices.find((i) => i.id === item.invoiceId);
+      if (!inv || inv.status !== 'open' || inv.disputed) continue;
+
+      const dup = db.proposals.find((p) => p.invoiceId === inv.id && p.action === item.proposedAction && ['pending', 'approved', 'executed'].includes(refreshExpiry(p).status));
+      if (dup) continue;
+
+      let payload = {};
+      if (item.proposedAction === 'send_reminder') {
+        const a = P.assess(inv, todayStr());
+        const r = await aiDraft(inv, a);
+        payload = { text: r.text.split('{{PAYMENT_LINK}}').join(`${baseUrl}/pay/${inv.id}`), source: r.source, tone: a.tone };
+      }
+      const pl = plan(item.proposedAction, inv, payload);
+      const p = {
+        id: newId(),
+        invoiceId: inv.id,
+        action: item.proposedAction,
+        title: pl.label,
+        purpose: pl.purpose,
+        expected: pl.expected,
+        risks: pl.risks,
+        payload,
+        status: 'pending',
+        snapshotHash: snapshotHash(inv),
+        createdAt: iso(),
+        expiresAt: new Date(Date.parse(iso()) + APPROVAL_TTL_MS).toISOString(),
+      };
+      db.proposals.push(p);
+      addAction(db, {
+        invoiceId: inv.id,
+        type: 'approval_requested',
+        detail: `Portfolio sweep requested approval: "${p.title}" (score ${item.score}/100, ${item.overdueDays}d overdue).`,
+        proposalId: p.id,
+      }, iso());
+      created.push(view(p));
+    }
+    if (created.length) store.save();
+    return { status: 201, json: { count: created.length, proposals: created } };
+  });
+
+  route('POST', '/api/agent/proposals/batch-decision', async ({ body }) => {
+    const decision = body && body.decision;
+    if (decision !== 'approve' && decision !== 'reject') throw new HttpError(400, 'Decision must be "approve" or "reject".');
+    const targetIds = Array.isArray(body.proposalIds) ? new Set(body.proposalIds) : null;
+    const pending = db.proposals.map((p) => refreshExpiry(p)).filter((p) => p.status === 'pending' && (!targetIds || targetIds.has(p.id)));
+    const results = [];
+    for (const p of pending) {
+      p.decidedAt = iso();
+      if (decision === 'approve') {
+        p.status = 'approved';
+        addAction(db, { invoiceId: p.invoiceId, type: 'approval_granted', detail: `Batch approved "${p.title}".`, proposalId: p.id }, iso());
+        if (body.executeNow) {
+          try {
+            const execRes = await executeProposal(p);
+            results.push({ id: p.id, status: p.status, executed: true, message: execRes.message });
+          } catch (e) {
+            results.push({ id: p.id, status: p.status, executed: false, error: e.message });
+          }
+        } else {
+          results.push({ id: p.id, status: 'approved' });
+        }
+      } else {
+        p.status = 'rejected';
+        addAction(db, { invoiceId: p.invoiceId, type: 'approval_rejected', detail: `Batch rejected "${p.title}".`, proposalId: p.id }, iso());
+        results.push({ id: p.id, status: 'rejected' });
+      }
+    }
+    store.save();
+    return { json: { processed: results.length, results } };
+  });
+
+  route('POST', '/api/assistant/chat', async ({ body }) => {
+    const query = body && body.query;
+    const res = await processAssistantQuery({
+      query,
+      invoices: db.invoices,
+      db,
+      ctx: ctx(),
+      aiGenerate: aiKey ? async (opts) => generateText({ prompt: opts.prompt, validate: (t) => ({ ok: true, text: t.trim() }), apiKey: aiKey, model: aiModel, fetchImpl: aiNow(), backoffMs }) : null,
+    });
+    return { json: res };
+  });
+
   route('POST', '/api/demo/simulate', ({ body }) => {
     if ('ai' in body) settings.simulateAi = Boolean(body.ai);
     if ('paypal' in body) settings.simulatePaypal = Boolean(body.paypal);
@@ -476,6 +618,13 @@ function createApp(opts = {}) {
       const out = await m.r.handler({ params, body, query: Object.fromEntries(url.searchParams) });
       if (out.redirect) { res.writeHead(302, { Location: out.redirect }); return res.end(); }
       if (out.html) { res.writeHead(out.status || 200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(out.html); }
+      if (out.csv) {
+        res.writeHead(out.status || 200, {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${out.filename || 'export.csv'}"`,
+        });
+        return res.end(out.csv);
+      }
       res.writeHead(out.status || 200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(out.json));
     } catch (e) {

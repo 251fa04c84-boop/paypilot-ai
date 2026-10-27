@@ -87,11 +87,35 @@ function auditClass(t) {
 }
 const timeline = (list) => h('ul', { class: 'timeline' }, list.map((x) => h('li', { class: auditClass(x.type) }, h('time', {}, new Date(x.at).toLocaleString()), x.detail)));
 
+function agentLoop(status) {
+  const steps = [
+    { label: '1. Observe' },
+    { label: '2. Analyze' },
+    { label: '3. Plan' },
+    { label: '4. Approve' },
+    { label: '5. Execute' },
+    { label: '6. Verify' },
+    { label: '7. Audit' },
+  ];
+  let cur = 3;
+  if (status === 'pending') cur = 3;
+  else if (status === 'approved') cur = 4;
+  else if (status === 'executed') cur = 5;
+  else if (['verified', 'confirmed'].includes(status)) cur = 6;
+
+  return h('div', { class: 'agent-loop', 'aria-label': 'Agent loop progress' },
+    ...steps.flatMap((s, idx) => [
+      h('span', { class: 'agent-step ' + (idx < cur ? 'done' : idx === cur ? 'active' : '') }, s.label),
+      idx < steps.length - 1 && h('span', { class: 'agent-arrow' }, '→'),
+    ]).filter(Boolean));
+}
+
 // ---------- approval review card ----------
 function proposalCard(p) {
   const inv = p.invoice || { client: '?', number: '?', amount: 0, currency: '' };
   const live = p.status === 'pending' || p.status === 'approved';
   const card = h('div', { class: 'card ' + (p.status === 'pending' ? 'glow' : '') },
+    agentLoop(p.status),
     h('div', { class: 'row' }, h('span', { class: 'name' }, p.title), h('span', { class: 'badge ' + STCLASS[p.status] }, STATUS[p.status])),
     h('p', { class: 'muted' }, `${inv.client} · ${inv.number} · ${money(inv.amount, inv.currency)}`),
     h('p', {}, h('strong', {}, 'Proposed action: '), p.purpose),
@@ -129,6 +153,21 @@ async function viewMission() {
   const waiting = open.filter((p) => p.status === 'pending' || p.status === 'approved');
   main.replaceChildren(h('h2', {}, 'Recovery Mission Control'), ...totals(sum));
   if (waiting.length) main.append(h('div', { class: 'card glow' }, h('div', { class: 'row' }, h('span', { class: 'name' }, `${waiting.length} approval${waiting.length === 1 ? '' : 's'} waiting for you`), h('button', { class: 'primary', onclick: () => switchTab('approvals') }, 'Review'))));
+
+  if (all.length > 0) {
+    const sweepCard = h('div', { class: 'card glow' },
+      h('div', { class: 'row' }, h('span', { class: 'name' }, '🤖 Autonomous Recovery Autopilot'), h('span', { class: 'badge ok' }, 'multi-step triage')),
+      h('p', { class: 'muted' }, 'Let the agent scan all open invoices, calculate recovery urgency, and prepare batched proposals for your explicit review in the Approvals queue.'),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', onclick: lock('Scanning portfolio…', async () => {
+          const r = await api('POST', '/api/agent/triage/apply');
+          toast(`Autopilot sweep finished: ${r.count} recovery proposal(s) staged.`);
+          await render();
+          if (r.count > 0) switchTab('approvals');
+        }) }, 'Run Portfolio Autopilot Sweep')));
+    main.append(sweepCard);
+  }
+
   main.append(h('h2', {}, 'Priority queue'));
   if (!all.length) main.append(h('div', { class: 'card empty' }, h('p', {}, 'No invoices yet. Add one, or load the clearly labelled demo scenarios.'), h('div', { class: 'actions center' }, h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'), h('button', { onclick: () => switchTab('invoices') }, 'Add an invoice'))));
   else if (!q.length) main.append(h('div', { class: 'card empty' }, 'Nothing needs attention right now.'));
@@ -146,14 +185,47 @@ function demoPanel(all) {
       h('li', {}, 'Scenario 2, disputed: open Harbor Dental. The agent pauses collection and blocks the actions.'),
       h('li', {}, 'Scenario 3, already paid: open Lumen Books, or pay Scenario 1 and try again. The action is blocked with the evidence.'),
       h('li', {}, 'Scenario 4, outage: switch on a simulated outage below, then try an action. Nothing is faked and the action can be retried.'),
+      h('li', {}, 'Scenario 5, webhook: simulate an asynchronous PayPal webhook payment confirmation without redirect.'),
       h('li', {}, 'Injection test: Injection Test has hostile text in its notes. The agent treats it as data.')),
-    h('div', { class: 'actions' }, hasDemo ? h('button', { class: 'danger', onclick: lock('Resetting…', async () => { if (confirm('Remove demo data and load a fresh set?')) { await api('DELETE', '/api/demo'); await api('POST', '/api/demo/seed'); await loadStatus(); await render(); } }) }, 'Reset demo scenarios') : h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'), sim('ai', 'AI'), sim('paypal', 'PayPal')));
+    h('div', { class: 'actions' },
+      hasDemo ? h('button', { class: 'danger', onclick: lock('Resetting…', async () => { if (confirm('Remove demo data and load a fresh set?')) { await api('DELETE', '/api/demo'); await api('POST', '/api/demo/seed'); await loadStatus(); await render(); } }) }, 'Reset demo scenarios') : h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'),
+      sim('ai', 'AI'),
+      sim('paypal', 'PayPal'),
+      h('button', { onclick: lock('Simulating webhook…', async () => {
+        const invs = await api('GET', '/api/invoices');
+        const target = invs.find((i) => i.status === 'open' && !i.disputed) || invs[0];
+        if (!target) return toast('No open invoice available.');
+        const checkout = await api('POST', `/api/invoices/${target.id}/pay`);
+        const orderId = (checkout.approveUrl.match(/token=([A-Za-z0-9-]+)/) || [])[1];
+        if (!orderId) return toast('Could not obtain order id.');
+        await api('POST', '/api/demo/simulate-webhook', { orderId });
+        toast(`Webhook received: payment verified for ${target.client}!`);
+        state.detail = target.id;
+        await render();
+      }) }, 'Simulate PayPal Webhook Payment')));
 }
 
 async function viewApprovals() {
   const list = await api('GET', '/api/proposals');
   main.replaceChildren(h('h2', {}, 'Approvals'));
-  if (!list.length) { main.append(h('div', { class: 'card empty' }, 'No approval requests yet. Open an invoice and ask the agent to propose an action.')); return; }
+  if (!list.length) { main.append(h('div', { class: 'card empty' }, 'No approval requests yet. Open an invoice or run Autopilot Sweep to propose actions.')); return; }
+  const waiting = list.filter((p) => p.status === 'pending');
+  if (waiting.length > 1) {
+    main.append(h('div', { class: 'card glow', style: 'margin-bottom:14px' },
+      h('div', { class: 'row' }, h('span', { class: 'name' }, `Batch Operations (${waiting.length} pending)`), h('span', { class: 'badge warn' }, 'human approval')),
+      h('p', { class: 'muted small' }, 'Review the proposals below. You can approve and execute all eligible actions in one click, or review each individually.'),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', onclick: lock('Approving all…', async () => {
+          const r = await api('POST', '/api/agent/proposals/batch-decision', { decision: 'approve', executeNow: true });
+          toast(`Batch approved and executed ${r.processed} proposal(s).`);
+          await render();
+        }) }, `Approve & Run All (${waiting.length})`),
+        h('button', { class: 'danger', onclick: lock('Rejecting all…', async () => {
+          const r = await api('POST', '/api/agent/proposals/batch-decision', { decision: 'reject' });
+          toast(`Rejected ${r.processed} proposal(s).`);
+          await render();
+        }) }, 'Reject All'))));
+  }
   const group = (title, f) => { const g = list.filter(f); if (g.length) main.append(h('h2', {}, title), ...g.map(proposalCard)); };
   group('Needs your decision', (p) => p.status === 'pending' || p.status === 'approved');
   group('In progress', (p) => p.status === 'executed');
@@ -277,16 +349,66 @@ function draftCard(d) {
   return card;
 }
 
+const assistantHistory = [
+  { sender: 'assistant', text: 'Hello! I am PayPilot AI. Ask me about your overdue accounts, recovery risks, disputed invoices, or specific client payment details. All recovery actions require your explicit approval.', source: 'system' },
+];
+
+async function viewAssistant() {
+  main.replaceChildren(h('h2', {}, 'AI Recovery Assistant'),
+    h('p', { class: 'muted' }, 'Conversational agent backed by deterministic verified facts and tool access.'));
+
+  const thread = h('div', { class: 'chat-thread' });
+  const renderThread = () => {
+    thread.replaceChildren(...assistantHistory.map((m) =>
+      h('div', { class: 'chat-msg ' + m.sender },
+        h('div', { style: 'font-size:.76rem;margin-bottom:4px;opacity:.75' }, m.sender === 'user' ? 'You' : `PayPilot AI (${m.source || 'verified'})`),
+        h('div', { style: 'white-space:pre-wrap' }, m.text))));
+    thread.scrollTop = thread.scrollHeight;
+  };
+
+  const ask = async (q) => {
+    if (!q || !q.trim()) return;
+    assistantHistory.push({ sender: 'user', text: q });
+    renderThread();
+    try {
+      const res = await api('POST', '/api/assistant/chat', { query: q });
+      assistantHistory.push({ sender: 'assistant', text: res.text, source: res.source });
+    } catch (e) {
+      assistantHistory.push({ sender: 'assistant', text: `Error: ${e.message}`, source: 'error' });
+    }
+    renderThread();
+  };
+
+  const input = h('input', { placeholder: 'Ask a question (e.g. "Who should I chase today?")', 'aria-label': 'Assistant question' });
+  const form = h('form', { onsubmit: async (ev) => { ev.preventDefault(); const q = input.value; input.value = ''; await ask(q); } },
+    h('div', { class: 'grid2', style: 'grid-template-columns:1fr auto;gap:8px;align-items:center' },
+      input,
+      h('button', { class: 'primary', type: 'submit' }, 'Ask')));
+
+  const quickPills = h('div', { class: 'quick-pills' },
+    h('button', { class: 'btn-pill', onclick: () => ask('What is our total outstanding and overdue amount?') }, '📊 Total Overdue'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Who should I chase today?') }, '🎯 Top Priorities'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Show disputed invoices') }, '⏸️ Disputed Invoices'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Status of Northwind Cafe') }, '☕ Northwind Cafe'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Status of Harbor Dental') }, '🦷 Harbor Dental'));
+
+  renderThread();
+  main.append(quickPills, thread, form);
+}
+
 async function viewActivity() {
   const list = await api('GET', '/api/actions');
-  main.replaceChildren(h('h2', {}, 'Recent activity'));
+  const bar = h('div', { class: 'actions', style: 'margin-bottom:12px' },
+    h('a', { class: 'btn', href: '/api/actions/export?format=csv', download: 'paypilot-audit.csv' }, 'Export Audit Log (CSV)'),
+    h('a', { class: 'btn', href: '/api/actions/export?format=json', target: '_blank' }, 'Export (JSON)'));
+  main.replaceChildren(h('div', { class: 'row' }, h('h2', {}, 'Recent activity'), bar));
   main.append(list.length ? h('div', { class: 'card' }, timeline(list)) : h('div', { class: 'card empty' }, 'Nothing has happened yet.'));
 }
 
 async function render() {
   await safe(async () => {
     if (state.detail) return viewDetail();
-    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, activity: viewActivity })[state.tab]();
+    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, assistant: viewAssistant, activity: viewActivity })[state.tab]();
   });
   refreshBadge();
 }

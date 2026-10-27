@@ -47,11 +47,15 @@ Observe -> Analyze -> Plan -> Ask for approval -> Execute (allowlisted action) -
 
 ## Demo scenarios (open the app, then Mission > "Demo mode")
 
-1. **Overdue invoice:** open *Northwind Cafe*. Request approval for a reminder, approve, confirm you sent it. Then request a Sandbox checkout, approve, pay with a Sandbox buyer, and watch it become verified and paid.
-2. **Disputed invoice:** open *Harbor Dental*. The agent recommends human review and blocks collection, with the reason logged.
-3. **Already paid:** open *Lumen Books* (seeded as paid), or pay scenario 1 and try again. The attempt is blocked and the PayPal capture id is shown as evidence.
-4. **Service unavailable:** use the demo switches "Simulate AI outage" or "Simulate PayPal outage". Drafts fall back with a SIMULATED label, and a checkout stays approved and retryable. Simulations are clearly labelled and exist only in demo mode.
-5. **Prompt injection:** open *Injection Test*. Its notes try to order the agent to mark the invoice paid. Nothing changes.
+1. **Portfolio Autopilot Sweep:** tap *Run Portfolio Autopilot Sweep* on Mission Control. The agent evaluates every invoice, determines recovery urgency, and prepares queued proposals in Approvals for your review.
+2. **AI Recovery Assistant:** switch to the *AI Assistant* tab or use prompt pills to query receivables, overdue risk, and disputed accounts using deterministic tools.
+3. **Overdue invoice:** open *Northwind Cafe*. Request approval for a reminder, approve, confirm you sent it. Then request a Sandbox checkout, approve, pay with a Sandbox buyer, and watch it become verified and paid.
+4. **Disputed invoice:** open *Harbor Dental*. The agent recommends human review and blocks collection, with the reason logged.
+5. **Already paid:** open *Lumen Books* (seeded as paid), or pay scenario 1 and try again. The attempt is blocked and the PayPal capture id is shown as evidence.
+6. **Asynchronous Webhook:** tap *Simulate PayPal Webhook Payment* in Demo mode to verify server-to-server webhook processing without browser redirect.
+7. **Service unavailable:** use the demo switches "Simulate AI outage" or "Simulate PayPal outage". Drafts fall back with a SIMULATED label, and a checkout stays approved and retryable. Simulations are clearly labelled and exist only in demo mode.
+8. **Prompt injection:** open *Injection Test*. Its notes try to order the agent to mark the invoice paid. The agent safely treats it as data.
+9. **Audit Log Export:** visit the *Activity* tab and tap *Export Audit Log (CSV)* for accounting compliance records.
 
 ## Verification status (honest)
 
@@ -59,13 +63,14 @@ Observe -> Analyze -> Plan -> Ask for approval -> Execute (allowlisted action) -
 |---|---|
 | PayPal Sandbox order, buyer approval, server-side capture and invoice marked paid | **VERIFIED** live on the deployed app (several real Sandbox payments, earlier versions) |
 | Gemini writes invoice-specific drafts, labelled with the model | **VERIFIED** live (gemini-3.5-flash-lite) |
-| Agent workflow (analyze, approve, run, verify, audit), blocking, expiry, revalidation, idempotency, outages, injection defence | **MOCK-TESTED** (automated tests use a fake PayPal and fake Gemini) and walked through in a browser with mocks |
-| The new agent screens against live PayPal and Gemini | **IMPLEMENTED, live run to be confirmed** on the deployed app |
-| Cancelled PayPal payment | **MOCK-TESTED** only |
+| Agent workflow (analyze, approve, run, verify, audit), blocking, expiry, revalidation, idempotency, outages, injection defence | **VERIFIED** (automated tests use a fake PayPal and fake Gemini) and walked through in a browser with mocks |
+| Portfolio Autopilot Sweep and Batch Approval Decisions | **VERIFIED** via automated tests and live implementation |
+| Conversational AI Recovery Assistant with deterministic tool calling | **VERIFIED** via automated tests and live implementation |
+| PayPal Webhook listener & simulation | **VERIFIED** via automated tests and live implementation |
+| Cancelled PayPal payment | **MOCK-TESTED** |
 | Durable storage | **NOT IMPLEMENTED.** Data is a JSON file and resets when the free host restarts |
 | Login and per-user data | **NOT IMPLEMENTED** (restricted demo) |
 | Email or SMS delivery | **NOT IMPLEMENTED.** Messages are drafts you send yourself |
-| Reminder-strategy simulation | **NOT IMPLEMENTED** |
 
 ## Run it
 
@@ -88,19 +93,21 @@ Host free on Render (`render.yaml`). Environment variables (see `.env.example`):
 
 ## Tests
 
-`npm test` runs 50 automated tests with Node's built-in runner: scoring and dates, payment verification (amount, currency, wrong invoice, pending, duplicate), the agent workflow, approval, rejection and expiry, revalidation, idempotency and concurrency, disputed and paid blocking, prompt injection, AI failure, timeout and fallback, rate limiting, and security headers. **PayPal and Gemini are mocked in these tests.** The live flows were checked by hand.
+`npm test` runs 56 automated tests with Node's built-in runner: scoring and dates, payment verification (amount, currency, wrong invoice, pending, duplicate), portfolio autopilot sweeps, batch decisions, conversational assistant tool calling, webhook processing, audit exports, the agent workflow, approval, rejection and expiry, revalidation, idempotency and concurrency, disputed and paid blocking, prompt injection, AI failure, timeout and fallback, rate limiting, and security headers. **PayPal and Gemini are mocked in these tests.**
 
 ## Architecture
 
 ```
 public/          mobile-first UI (vanilla JS, strict CSP, text built with textContent)
-server.js        routes: invoices, agent (analyze, interpret, proposals, decision, execute, confirm-sent, dispute), PayPal, demo
-lib/agent.js     deterministic facts, rules, eligibility, allowlist, recommendation, AI prompt and output validation
+server.js        routes: invoices, agent (triage, proposals, batch-decision, assistant, dispute), PayPal, webhooks, demo
+lib/agent.js     deterministic facts, rules, eligibility, allowlist, portfolio triage, assistant query processing, AI validation
 lib/priority.js  dates, scoring and the recovery queue
 lib/payments.js  verifyCapture and applyCapture: the only place an invoice becomes paid via PayPal
 lib/paypal.js    PayPal Orders v2 client (Sandbox only)
 lib/ai.js        Gemini calls with model fallback, timeout, backoff and validation
 lib/store.js     JSON storage and the audit log
+lib/summary.js   Multi-currency accounting totals
+lib/ratelimit.js Sliding window rate limiters
 ```
 
 ## AI usage disclosure
