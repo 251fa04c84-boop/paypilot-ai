@@ -3,19 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>PayPilot AI: payment recovery assistant</title>
-<meta name="description" content="Find the overdue invoice that needs attention, understand why, and send an approved, personalised recovery message.">
+<meta name="theme-color" content="#080A12">
+<title>PayPilot AI: payment recovery agent</title>
+<meta name="description" content="An AI agent for invoice recovery: it analyses overdue invoices, recommends an action, asks for your approval, runs only approved actions, verifies payments with PayPal, and keeps an audit trail.">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header class="top">
   <h1>PayPilot <span>AI</span></h1>
-  <p class="sub">Payment recovery assistant</p>
+  <p class="sub">Payment recovery agent · Recovery Mission Control</p>
   <div id="status" class="status" aria-live="polite"></div>
 </header>
 <main id="main" tabindex="-1"></main>
 <nav class="tabs" aria-label="Sections">
-  <button data-tab="recovery" aria-current="page">Recovery</button>
+  <button data-tab="mission" aria-current="page">Mission</button>
+  <button data-tab="approvals">Approvals<span id="badge" class="count" hidden></span></button>
   <button data-tab="invoices">Invoices</button>
   <button data-tab="activity">Activity</button>
 </nav>

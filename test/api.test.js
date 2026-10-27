@@ -170,11 +170,11 @@ test('demo data is labelled and removable; manual paid is recorded as manual', a
     assert.equal((await t.call('POST', '/api/demo/seed')).status, 201);
     assert.equal((await t.call('POST', '/api/demo/seed')).status, 409);
     const list = (await t.call('GET', '/api/invoices')).json;
-    assert.equal(list.length, 6); assert.ok(list.every((i) => i.demo && /demo/.test(i.client)));
+    assert.equal(list.length, 8); assert.ok(list.every((i) => i.demo && /demo/.test(i.client)));
     const q = (await t.call('GET', '/api/recovery')).json;
     assert.ok(q.length >= 3); assert.ok(q[0].assessment.score >= q[q.length - 1].assessment.score);
     const m = await t.call('POST', `/api/invoices/${list[0].id}/mark-paid-manually`); assert.equal(m.json.paymentMethod, 'manual');
-    assert.equal((await t.call('DELETE', '/api/demo')).json.removed, 6);
+    assert.equal((await t.call('DELETE', '/api/demo')).json.removed, 8);
     assert.equal((await t.call('GET', '/api/invoices')).json.length, 0);
   } finally { t.close(); }
 });

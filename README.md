@@ -1,109 +1,120 @@
-# PayPilot AI: intelligent payment recovery assistant
+# PayPilot AI: an agent for invoice recovery
 
-Built for the **PayPal AI Hackathon 2026**. PayPilot AI helps a small business decide **which overdue invoice to chase first, why, what to say, and records exactly what happened**, then lets the client pay through the **PayPal Sandbox**.
+Built for the **PayPal AI Hackathon 2026**. PayPilot AI is an AI agent for small-business payment operations. It does not just answer questions. It runs a bounded, auditable workflow on your invoices:
 
 ```
-Find the invoice that needs attention -> explain why -> recommend the next action
- -> AI drafts a personalised message -> YOU edit and approve -> record the outcome honestly
- -> client pays via PayPal Sandbox -> server verifies the capture -> invoice marked paid
+Observe -> Analyze -> Plan -> Ask for approval -> Execute (allowlisted action) -> Verify with PayPal -> Update records -> Audit
 ```
 
-> **Sandbox only.** The PayPal API address is hard-coded to `api-m.sandbox.paypal.com`, so this app cannot move real money.
+> **Sandbox only.** The PayPal API address is fixed to `api-m.sandbox.paypal.com`, so this app cannot move real money.
+> **Restricted demo.** There are no user accounts. Use demo data only.
 
-## What is real, and what is not
+## Why this is more than a chatbot
 
-| Feature | Status |
+| A chatbot | PayPilot AI |
 |---|---|
-| Invoice create / edit / void / delete, correct due-date and overdue maths | Real, unit-tested |
-| Recovery priority score and "why" explanation | Real and deterministic: computed from overdue days, amount and reminder history. **No randomness.** It ranks urgency; it does **not** predict whether a client will pay. |
-| AI-written recovery messages | Real when `GEMINI_API_KEY` is set (Google Gemini via the Gemini API). Without a key, the app uses a template and **labels the draft "template"**. If an AI call fails, times out, or returns unsafe text, it falls back to the template and says why. Model output is treated as untrusted: it must be 40-1500 characters, mention the invoice, contain no invented links or unknown placeholders. |
-| Human approval | Real. Drafts are editable; nothing is approved until you press Approve. |
-| Sending the message | **Not automated.** PayPilot does not send email/SMS. After approval you copy the text, send it yourself, and press "I sent it". The audit trail says exactly this. |
-| PayPal Sandbox payment | Real when Sandbox credentials are configured: server creates an order, buyer approves on PayPal, server captures and **verifies status, amount, currency and invoice** before marking paid. **Verified live on 25 Oct 2026:** one demo invoice was paid with a Sandbox buyer account and marked paid only after the server-side capture check (the audit trail shows the capture id). |
-| Dashboard totals | Outstanding, overdue, at-risk (over 30 days late) and paid-via-PayPal totals per currency. Plain arithmetic, labelled "no AI". |
-| Abuse protection | In-memory rate limits on the API, AI drafting (protects the free AI quota) and payment routes. Resets when the server restarts. |
-| Without PayPal credentials | The app still works; payment buttons are disabled and the header shows "PayPal Sandbox: not configured". Nothing is faked. |
-| Storage | A JSON file (`data/db.json`). On Render's free plan the disk is not permanent, so data can reset after a restart or redeploy. |
-| Demo data | Clearly labelled "(demo)" and "DEMO" and removable with one button. |
+| Answers "what should I do about this invoice?" | Reads the stored invoice, applies fixed rules, recommends one action and shows the evidence, risks and what is unknown |
+| Cannot act | Proposes an action from a small **allowlist**, shows the exact action and waits for your explicit decision |
+| Can say "done" | Never claims success itself. An invoice becomes paid only after the **PayPal capture is verified server-side** (status, amount, currency, invoice) |
+| Leaves no trail | Records analysis, request, approval, attempt, service response, verification and state change |
 
-## Try it
+## The agent loop, step by step
 
-### Option A: run locally (Node 22 (the version it is tested on))
+| Step | What happens | Where |
+|---|---|---|
+| Observe | Loads the invoice, payment evidence, reminder history, open PayPal orders | `lib/agent.js` `evaluate` |
+| Analyze | **Verified facts** and **rule-based conclusions** are listed separately. Missing information is stated ("not recorded: whether the client replied"). An optional **AI interpretation** (Gemini) is labelled "commentary, not a fact" | `lib/agent.js`, `POST /api/invoices/:id/analyze` and `/interpret` |
+| Plan | One recommendation with reason, evidence, risks, uncertainty and "this would change if..." | `evaluate().recommendation` |
+| Request approval | A review card shows the invoice, amount, exact message or checkout, expected outcome, risks, expiry (30 minutes) and Approve / Reject | `POST /api/invoices/:id/proposals` |
+| Execute | Only the approved action runs, after **revalidation** (invoice unchanged, still eligible, approval not expired) | `POST /api/proposals/:id/execute` |
+| Verify | Reminders: released to you, **PayPilot does not send them**, and your records change only when you confirm. Checkout: the order is created, the buyer pays on PayPal, then the server captures and verifies | `lib/payments.js` |
+| Update | Invoice state changes only after verification. Paid invoices close their unsent drafts and approvals | `applyCapture` |
+| Audit | Every step is logged with timestamps and ids, and shown in the invoice timeline | `lib/store.js` `addAction` |
+
+**Allowlisted actions:** `send_reminder` (release a draft for you to send) and `start_checkout` (create a Sandbox order). Nothing else can be proposed or run. An approval covers only its own action, on its own invoice.
+
+## Safeguards (all covered by automated tests)
+
+- Allowlist only. Unknown actions are refused (HTTP 400).
+- Explicit approval, with reject, and **expiry** after 30 minutes.
+- **Revalidation at execution:** a changed amount, a new dispute, a payment, or a void cancels the approval.
+- **Idempotent and race-safe:** running an approved action twice or at the same time acts once.
+- **Blocked actions are explained and logged:** already paid (with capture evidence), disputed, void, not due, reminder sent recently.
+- **Prompt-injection defence:** invoice notes are untrusted data. The rules never read them. Instruction-like notes are flagged and withheld from the AI. Other notes are fenced as untrusted. AI text can never change status, rules or approvals.
+- **AI output is untrusted:** length, no invented links, must match the invoice, cannot assert a payment status. Failures fall back to a labelled template. The label never says "AI" for template text.
+- **Service outages:** Gemini tries a second model with backoff. PayPal failures keep the approval open and retryable, and never show a fake success.
+- Rate limits on the API, AI calls and payment routes. Secrets live only in server environment variables.
+
+## Demo scenarios (open the app, then Mission > "Demo mode")
+
+1. **Overdue invoice:** open *Northwind Cafe*. Request approval for a reminder, approve, confirm you sent it. Then request a Sandbox checkout, approve, pay with a Sandbox buyer, and watch it become verified and paid.
+2. **Disputed invoice:** open *Harbor Dental*. The agent recommends human review and blocks collection, with the reason logged.
+3. **Already paid:** open *Lumen Books* (seeded as paid), or pay scenario 1 and try again. The attempt is blocked and the PayPal capture id is shown as evidence.
+4. **Service unavailable:** use the demo switches "Simulate AI outage" or "Simulate PayPal outage". Drafts fall back with a SIMULATED label, and a checkout stays approved and retryable. Simulations are clearly labelled and exist only in demo mode.
+5. **Prompt injection:** open *Injection Test*. Its notes try to order the agent to mark the invoice paid. Nothing changes.
+
+## Verification status (honest)
+
+| Claim | Status |
+|---|---|
+| PayPal Sandbox order, buyer approval, server-side capture and invoice marked paid | **VERIFIED** live on the deployed app (several real Sandbox payments, earlier versions) |
+| Gemini writes invoice-specific drafts, labelled with the model | **VERIFIED** live (gemini-3.5-flash-lite) |
+| Agent workflow (analyze, approve, run, verify, audit), blocking, expiry, revalidation, idempotency, outages, injection defence | **MOCK-TESTED** (automated tests use a fake PayPal and fake Gemini) and walked through in a browser with mocks |
+| The new agent screens against live PayPal and Gemini | **IMPLEMENTED, live run to be confirmed** on the deployed app |
+| Cancelled PayPal payment | **MOCK-TESTED** only |
+| Durable storage | **NOT IMPLEMENTED.** Data is a JSON file and resets when the free host restarts |
+| Login and per-user data | **NOT IMPLEMENTED** (restricted demo) |
+| Email or SMS delivery | **NOT IMPLEMENTED.** Messages are drafts you send yourself |
+| Reminder-strategy simulation | **NOT IMPLEMENTED** |
+
+## Run it
+
 ```bash
-git clone <this repo>
-cd paypilot-ai
-node server.js          # no npm install needed: zero dependencies
-# open http://localhost:3000
+node server.js          # Node 22, no npm install needed
+# http://localhost:3000
+npm test                # node --test test/*.test.js
 ```
 
-### Option B: host free on Render (works from a phone)
-1. Render dashboard -> **New -> Blueprint** (or Web Service) -> connect this repo. `render.yaml` sets it up on the free plan.
-2. In **Environment**, add the variables below (type secrets directly into Render, never into the repo).
-3. Open the Render URL.
+Host free on Render (`render.yaml`). Environment variables (see `.env.example`):
 
-### Environment variables
-| Name | Needed for | Notes |
-|---|---|---|
-| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal Sandbox payments | From developer.paypal.com -> Apps & Credentials -> **Sandbox** tab |
-| `GEMINI_API_KEY` | Real AI drafts | Free key from Google AI Studio. Free-tier prompts may be used by Google to improve its products, so use demo-level data. |
-| `GEMINI_MODEL` | optional | Default `gemini-3.5-flash-lite`. If it is busy, renamed or rate-limited, the app automatically tries `gemini-3.8-flash` next and labels the draft with the model that answered. |
-| `APP_BASE_URL` | PayPal return links | Render sets `RENDER_EXTERNAL_URL` automatically |
-| `SENDER_NAME` | optional | Signature on drafts |
+| Name | Needed for |
+|---|---|
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal Sandbox (developer.paypal.com, Sandbox tab). Never commit them |
+| `GEMINI_API_KEY` | Real AI. Free-tier prompts may be used by Google, so use demo data only |
+| `GEMINI_MODEL` | Optional. Default `gemini-3.5-flash-lite`, then automatic fallback to `gemini-3.8-flash` |
+| `APP_BASE_URL`, `SENDER_NAME` | Optional |
 
-### Demo walkthrough (for judges)
-1. Open the app and press **Load demo data**.
-2. Open the top-ranked invoice and tap **Why?** to see the scoring reasons.
-3. Tap **Draft a message**, edit it, then **Approve message**. A PayPal Sandbox payment link is inserted.
-4. Tap **Copy message**, then **I sent it**. See the honest entries in the **Audit trail**.
-5. Tap **Pay with PayPal Sandbox**, log in with a Sandbox *personal* test account, approve. You return to the app, the server captures and verifies the payment, and the invoice becomes **Paid (PayPal Sandbox, verified)**.
-6. Cancelling on PayPal leaves the invoice open and logs the cancellation.
+**For judges:** open the hosted demo (the free host can take up to a minute to wake), tap *Load demo scenarios*, and follow the scenarios above. To pay in the Sandbox use the test buyer login given in the submission.
 
 ## Tests
 
-```bash
-npm test      # or: node --test test/*.test.js
-```
-36 automated tests (Node's built-in runner, no dependencies), covering:
-- date and overdue calculations, validation, deterministic scoring and ordering
-- payment verification: matching capture, **amount/currency mismatch, wrong invoice, pending, unapproved order, duplicate payment**
-- AI output validation (invented links, wrong invoice, length, missing link), timeouts, API errors and honest source labels
-- AI model fallback (busy, retired or rate-limited models fall through to the next; key errors do not) and duplicate-payment-order protection
-- summary totals and the rate limiter, including HTTP 429 with `Retry-After`
-- the HTTP API with a fake PayPal: success, **repeated/concurrent capture (PayPal called once)**, buyer cancel, unknown order ids, PayPal not configured, draft -> approve -> sent audit trail, AI success and AI failure fallback, static-file path traversal, security headers
-
-**Not covered by automated tests:** the live PayPal Sandbox network calls (the tests use a fake PayPal; the live flow was checked by hand once, see above) and the live Gemini call. The user interface was smoke-tested manually in headless Chromium at phone width, with no automated UI tests.
+`npm test` runs 50 automated tests with Node's built-in runner: scoring and dates, payment verification (amount, currency, wrong invoice, pending, duplicate), the agent workflow, approval, rejection and expiry, revalidation, idempotency and concurrency, disputed and paid blocking, prompt injection, AI failure, timeout and fallback, rate limiting, and security headers. **PayPal and Gemini are mocked in these tests.** The live flows were checked by hand.
 
 ## Architecture
 
 ```
-public/        mobile-first UI (vanilla JS, no framework, strict CSP, text built with textContent)
-server.js      HTTP server + routes (zero dependencies)
-lib/priority.js  dates, validation, explainable scoring, recovery queue (pure functions)
-lib/payments.js  verifyCapture / applyCapture: the ONLY place an invoice becomes "paid" via PayPal
-lib/paypal.js    PayPal Orders v2 client (sandbox only): token, create order, capture, get order
-lib/ai.js        Gemini drafting + labelled template fallback
-lib/store.js     JSON file storage + audit log helper
+public/          mobile-first UI (vanilla JS, strict CSP, text built with textContent)
+server.js        routes: invoices, agent (analyze, interpret, proposals, decision, execute, confirm-sent, dispute), PayPal, demo
+lib/agent.js     deterministic facts, rules, eligibility, allowlist, recommendation, AI prompt and output validation
+lib/priority.js  dates, scoring and the recovery queue
+lib/payments.js  verifyCapture and applyCapture: the only place an invoice becomes paid via PayPal
+lib/paypal.js    PayPal Orders v2 client (Sandbox only)
+lib/ai.js        Gemini calls with model fallback, timeout, backoff and validation
+lib/store.js     JSON storage and the audit log
 ```
-
-Key design decisions:
-- **The server decides what is paid.** The browser never sees PayPal secrets or tokens. A click or a redirect cannot mark an invoice paid; only a verified PayPal capture can.
-- **Only app-created orders can be captured.** The capture endpoint looks the order up in the server's own records first.
-- **Idempotent capture.** Repeated requests do not capture twice; PayPal's "already captured" response is handled by re-reading the order.
-- **Honest audit trail.** Entries describe only what really happened (for example, "You confirmed you sent reminder #1 yourself").
 
 ## AI usage disclosure
 
-- **In the product:** Google Gemini (free tier) writes recovery message drafts when configured. A human must approve every message.
-- **In development:** this project was written with assistance from Claude (Anthropic). All code was run through the tests above.
+Google Gemini writes optional drafts and interpretations at runtime. A human approves every action. Claude (Anthropic) was used as a coding assistant to write and test this code.
 
-## Hackathon note: significant updates
+## Hackathon note
 
-This repository was created on **24 October 2026**, after the hackathon submission period began (1 October 2026). The whole codebase is new work for this hackathon.
+This repository was created on 24 October 2026, after the submission period began on 1 October 2026. All code is new work for this hackathon.
 
 ## Known limitations
-- No user accounts: anyone with the URL can see and edit the data. Use demo data only.
-- JSON-file storage (not durable on Render free); no email/SMS sending; single currency per invoice; no refunds or webhooks (the app reads the capture result directly).
-- Free-tier hosting sleeps when idle; the first request can take about a minute.
+
+No login (restricted demo). Storage is not durable on free hosting. Rate limits are in memory. No email or SMS sending. Sandbox payments only. One currency per invoice.
 
 ## License
+
 MIT. See [LICENSE](LICENSE).
