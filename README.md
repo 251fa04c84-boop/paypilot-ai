@@ -93,7 +93,7 @@ Host free on Render (`render.yaml`). Environment variables (see `.env.example`):
 
 ## Tests
 
-`npm test` runs 56 automated tests with Node's built-in runner: scoring and dates, payment verification (amount, currency, wrong invoice, pending, duplicate), portfolio autopilot sweeps, batch decisions, conversational assistant tool calling, webhook processing, audit exports, the agent workflow, approval, rejection and expiry, revalidation, idempotency and concurrency, disputed and paid blocking, prompt injection, AI failure, timeout and fallback, rate limiting, and security headers. **PayPal and Gemini are mocked in these tests.**
+`npm test` runs 57 automated tests with Node's built-in runner: scoring and dates, payment verification (amount, currency, wrong invoice, pending, duplicate), portfolio autopilot sweeps, batch decisions, conversational assistant tool calling, webhook processing, audit exports, the agent workflow, approval, rejection and expiry, revalidation, idempotency and concurrency, disputed and paid blocking, prompt injection, AI failure, timeout and fallback, rate limiting, and security headers. **PayPal and Gemini are mocked in these tests.**
 
 ## Architecture
 

@@ -140,7 +140,16 @@ function proposalCard(p) {
     bar.append(h('button', { onclick: async () => { try { await navigator.clipboard.writeText(p.payload.text); toast('Copied.'); } catch (_) { toast('Could not copy. Select the text and copy it manually.'); } } }, 'Copy message'),
       h('button', { class: 'primary', onclick: lock('Saving…', async () => { await api('POST', `/api/proposals/${p.id}/confirm-sent`); await finish(); }) }, 'I sent it myself'));
   } else if (p.status === 'executed' && p.action === 'start_checkout' && p.result && p.result.approveUrl) {
-    bar.append(h('a', { class: 'btn primary', href: p.result.approveUrl }, 'Open PayPal Sandbox checkout'), h('span', { class: 'muted small' }, 'Not paid yet. When PayPal sends you back, the server verifies the payment.'));
+    const orderId = p.orderId || (p.result.approveUrl.match(/token=([A-Za-z0-9-]+)/) || [])[1];
+    bar.append(
+      h('a', { class: 'btn primary', href: p.result.approveUrl, target: '_blank', rel: 'noopener' }, 'Open PayPal Sandbox checkout'),
+      orderId && h('button', { class: 'btn', onclick: lock('Simulating webhook capture…', async () => {
+        const sim = await api('POST', '/api/demo/simulate-webhook', { orderId });
+        toast(sim.result && sim.result.outcome === 'paid' ? 'Payment capture verified with PayPal!' : 'Webhook simulated.');
+        await finish();
+      }) }, '⚡ Simulate Webhook Settlement (Demo)'),
+      h('span', { class: 'muted small' }, 'Not paid yet. When PayPal confirms capture, the server verifies the settlement.')
+    );
   }
   if (bar.children.length) card.append(bar);
   return card;

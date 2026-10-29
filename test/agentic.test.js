@@ -225,6 +225,38 @@ test('API: PayPal Webhook verification and simulation captures payment', async (
   }
 });
 
+test('API: PayPal Webhook simulates approved capture for demo invoices when unapproved', async () => {
+  const { app, store } = fakeApp({
+    paypal: {
+      configured: () => true,
+      createOrder: async ({ invoice }) => ({ id: `ord-${invoice.id}`, approveUrl: `https://fake.paypal.com/checkout?id=ord-${invoice.id}` }),
+      captureOrder: async () => {
+        const err = new Error('The buyer has not approved this order in PayPal yet.');
+        err.code = 'NOT_APPROVED';
+        throw err;
+      },
+    },
+  });
+  await new Promise((r) => app.server.listen(0, r));
+  try {
+    const inv = { id: 'inv-unapproved-1', client: 'Unapproved Buyer Demo', number: 'U-200', amount: 150, currency: 'USD', issueDate: '2026-10-01', dueDate: '2026-10-20', status: 'open', demo: true, disputed: false };
+    store.db.invoices.push(inv);
+
+    const payRes = await request(app.server, 'POST', `/api/invoices/${inv.id}/pay`);
+    assert.equal(payRes.status, 200);
+    const order = store.db.orders.find((o) => o.invoiceId === inv.id);
+
+    // Call simulate-webhook; should gracefully complete verified capture for demo invoice
+    const hookRes = await request(app.server, 'POST', '/api/demo/simulate-webhook', { orderId: order.orderId });
+    assert.equal(hookRes.status, 200);
+    assert.equal(hookRes.json.result.outcome, 'paid');
+    assert.equal(hookRes.json.result.simulatedApproval, true);
+    assert.equal(inv.status, 'paid');
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
 test('API: Audit trail export outputs CSV and JSON format', async () => {
   const { app } = fakeApp();
   await new Promise((r) => app.server.listen(0, r));
