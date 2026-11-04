@@ -52,7 +52,7 @@ Observe -> Analyze -> Plan -> Ask for approval -> Execute (allowlisted action) -
 3. **Overdue invoice:** open *Northwind Cafe*. Request approval for a reminder, approve, confirm you sent it. Then request a Sandbox checkout, approve, pay with a Sandbox buyer, and watch it become verified and paid.
 4. **Disputed invoice:** open *Harbor Dental*. The agent recommends human review and blocks collection, with the reason logged.
 5. **Already paid:** open *Lumen Books* (seeded as paid), or pay scenario 1 and try again. The attempt is blocked and the PayPal capture id is shown as evidence.
-6. **Asynchronous Webhook:** tap *Simulate PayPal Webhook Payment* in Demo mode to verify server-to-server webhook processing without browser redirect.
+6. **Asynchronous Webhook:** tap *Simulate PayPal Webhook Payment* on a demo invoice to exercise the demo-only settlement path. Real PayPal webhook deliveries are separately signature-verified.
 7. **Service unavailable:** use the demo switches "Simulate AI outage" or "Simulate PayPal outage". Drafts fall back with a SIMULATED label, and a checkout stays approved and retryable. Simulations are clearly labelled and exist only in demo mode.
 8. **Prompt injection:** open *Injection Test*. Its notes try to order the agent to mark the invoice paid. The agent safely treats it as data.
 9. **Audit Log Export:** visit the *Activity* tab and tap *Export Audit Log (CSV)* for accounting compliance records.
@@ -66,7 +66,8 @@ Observe -> Analyze -> Plan -> Ask for approval -> Execute (allowlisted action) -
 | Agent workflow (analyze, approve, run, verify, audit), blocking, expiry, revalidation, idempotency, outages, injection defence | **VERIFIED** (automated tests use a fake PayPal and fake Gemini) and walked through in a browser with mocks |
 | Portfolio Autopilot Sweep and Batch Approval Decisions | **VERIFIED** via automated tests and live implementation |
 | Conversational AI Recovery Assistant with deterministic tool calling | **VERIFIED** via automated tests and live implementation |
-| PayPal Webhook listener & simulation | **VERIFIED** via automated tests and live implementation |
+| PayPal webhook signature verification and event replay handling | **AUTOMATED-TESTED with a mocked verifier; not yet verified against a live PayPal webhook delivery** |
+| Demo webhook simulation | **AUTOMATED-TESTED; restricted to demo invoices** |
 | Cancelled PayPal payment | **MOCK-TESTED** |
 | Durable storage | **NOT IMPLEMENTED.** Data is a JSON file and resets when the free host restarts |
 | Login and per-user data | **NOT IMPLEMENTED** (restricted demo) |
@@ -85,6 +86,7 @@ Host free on Render (`render.yaml`). Environment variables (see `.env.example`):
 | Name | Needed for |
 |---|---|
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal Sandbox (developer.paypal.com, Sandbox tab). Never commit them |
+| `PAYPAL_WEBHOOK_ID` | Required to verify real webhook deliveries; copy the Sandbox webhook ID from the PayPal Developer Dashboard |
 | `GEMINI_API_KEY` | Real AI. Free-tier prompts may be used by Google, so use demo data only |
 | `GEMINI_MODEL` | Optional. Default `gemini-3.5-flash-lite`, then automatic fallback to `gemini-3.8-flash` |
 | `APP_BASE_URL`, `SENDER_NAME` | Optional |
@@ -93,7 +95,7 @@ Host free on Render (`render.yaml`). Environment variables (see `.env.example`):
 
 ## Tests
 
-`npm test` runs 57 automated tests with Node's built-in runner: scoring and dates, payment verification (amount, currency, wrong invoice, pending, duplicate), portfolio autopilot sweeps, batch decisions, conversational assistant tool calling, webhook processing, audit exports, the agent workflow, approval, rejection and expiry, revalidation, idempotency and concurrency, disputed and paid blocking, prompt injection, AI failure, timeout and fallback, rate limiting, and security headers. **PayPal and Gemini are mocked in these tests.**
+`npm test` runs the automated tests with Node's built-in runner: scoring and dates, payment verification (amount, currency, wrong invoice, pending, duplicate), portfolio autopilot sweeps, batch decisions, conversational assistant tool calling, webhook processing, audit exports, the agent workflow, approval, rejection and expiry, revalidation, idempotency and concurrency, disputed and paid blocking, prompt injection, AI failure, timeout and fallback, rate limiting, and security headers. **PayPal and Gemini are mocked in these tests.**
 
 ## Architecture
 
