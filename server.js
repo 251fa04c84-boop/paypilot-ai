@@ -299,7 +299,9 @@ function createApp(opts = {}) {
     catch (_) { throw new HttpError(503, 'PayPal could not verify the webhook right now. The event can be retried.'); }
     if (!verified) throw new HttpError(401, 'PayPal webhook signature verification failed.');
     const cutoff = Date.parse(iso()) - 30 * 86400000;
-    db.processedWebhookEvents = db.processedWebhookEvents.filter((x) => x && Date.parse(x.at) >= cutoff);
+    db.processedWebhookEvents = db.processedWebhookEvents
+      .filter((x) => x && typeof x.id === 'string' && Date.parse(x.at) >= cutoff)
+      .slice(-10000);
     if (db.processedWebhookEvents.some((x) => x.id === eventId)) return { json: { received: true, duplicate: true, eventId } };
     if (webhookInflight.has(eventId)) throw new HttpError(503, 'This PayPal webhook event is already being processed. Retry shortly.');
     webhookInflight.add(eventId);
