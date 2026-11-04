@@ -23,12 +23,14 @@ function createApp(opts = {}) {
   const now = opts.now || (() => new Date());
   const store = opts.store || createStore(env.DATA_FILE || path.join(__dirname, 'data', 'db.json'));
   const db = store.db;
+  db.processedWebhookEvents = Array.isArray(db.processedWebhookEvents) ? db.processedWebhookEvents : [];
   const paypal = opts.paypal || createPayPal({ clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET });
   const aiFetch = opts.aiFetch || fetch;
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
   const inflight = new Set();
+  const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
   const settings = (db.settings = db.settings || {});
   let aiLast = null; // last real AI call outcome, shown as a service-health indicator
@@ -167,8 +169,7 @@ function createApp(opts = {}) {
     const beforeHash = snapshotHash(inv);
     if (body.status === 'void' || body.status === 'open') upd.status = body.status;
     Object.assign(inv, upd);
-    if (snapshotHash(inv) !== beforeHash) closeProposals(db, inv.id, 'the invoice was edited', iso());
-    addAction(db, { invoiceId: inv.id, type: 'invoice_updated', detail: `Invoice ${inv.number} edited (status: ${inv.status}).` }, iso());
+    if (snapshotHash(inv) !== beforeHash) closeProposals(db, inv.id, 'the invoice was edited', iso());    addAction(db, { invoiceId: inv.id, type: 'invoice_updated', detail: `Invoice ${inv.number} edited (status: ${inv.status}).` }, iso());
     if (inv.status === 'void') closeDrafts(db, inv.id, 'the invoice was voided', iso());
     store.save();
     return { json: withA(inv) };
@@ -269,34 +270,64 @@ function createApp(opts = {}) {
 
   route('POST', '/api/invoices/:id/pay', async ({ params }) => ({ json: { approveUrl: await startPayment(find(db.invoices, params.id, 'Invoice')) } }));
   route('POST', '/api/paypal/capture', async ({ body }) => ({ json: await capture(body.orderId) }));
-  route('POST', '/api/paypal/webhook', async ({ body }) => {
+  route('POST', '/api/paypal/webhook', async ({ body, headers }) => {
     const event = body && body.event_type;
     const resource = body && body.resource;
-    if (!event || !resource) throw new HttpError(400, 'Invalid webhook payload.');
-    let orderId = resource.id;
-    if (event.startsWith('PAYMENT.CAPTURE.') && resource.supplementary_data && resource.supplementary_data.related_ids) {
-      orderId = resource.supplementary_data.related_ids.order_id || orderId;
+    const eventId = body && body.id;
+    if (!event || !resource || typeof eventId !== 'string' || !eventId.trim()) throw new HttpError(400, 'Invalid PayPal webhook payload.');
+    if (!env.PAYPAL_WEBHOOK_ID || !paypal.configured() || typeof paypal.verifyWebhookSignature !== 'function') {
+      throw new HttpError(503, 'PayPal webhook verification is not configured. Set PAYPAL_WEBHOOK_ID and valid Sandbox credentials.');
     }
-    const rec = db.orders.find((o) => o.orderId === orderId);
-    if (!rec) return { json: { received: true, ignored: true, reason: 'Order not managed by PayPilot.' } };
-    addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `PayPal webhook received: ${event} for order ${orderId}.` }, iso());
-    let captureResult = null;
-    if (event === 'CHECKOUT.ORDER.APPROVED' || event === 'PAYMENT.CAPTURE.COMPLETED') {
-      try {
-        captureResult = await capture(orderId);
-      } catch (e) {
-        captureResult = { error: e.message };
+    const signature = {
+      authAlgo: headers['paypal-auth-algo'],
+      certUrl: headers['paypal-cert-url'],
+      transmissionId: headers['paypal-transmission-id'],
+      transmissionSig: headers['paypal-transmission-sig'],
+      transmissionTime: headers['paypal-transmission-time'],
+      webhookId: env.PAYPAL_WEBHOOK_ID,
+      webhookEvent: body,
+    };
+    if (Object.values(signature).some((v) => v == null || v === '')) throw new HttpError(401, 'Required PayPal webhook signature headers are missing.');
+    let verified = false;
+    try { verified = await paypal.verifyWebhookSignature(signature); }
+    catch (_) { throw new HttpError(503, 'PayPal could not verify the webhook right now. The event can be retried.'); }
+    if (!verified) throw new HttpError(401, 'PayPal webhook signature verification failed.');
+    const cutoff = Date.parse(iso()) - 30 * 86400000;
+    db.processedWebhookEvents = db.processedWebhookEvents.filter((x) => x && Date.parse(x.at) >= cutoff);
+    if (db.processedWebhookEvents.some((x) => x.id === eventId)) return { json: { received: true, duplicate: true, eventId } };
+    if (webhookInflight.has(eventId)) throw new HttpError(503, 'This PayPal webhook event is already being processed. Retry shortly.');
+    webhookInflight.add(eventId);
+    try {
+      let orderId = resource.id;
+      if (event.startsWith('PAYMENT.CAPTURE.') && resource.supplementary_data && resource.supplementary_data.related_ids) {
+        orderId = resource.supplementary_data.related_ids.order_id || orderId;
       }
+      const rec = db.orders.find((o) => o.orderId === orderId);
+      if (!rec) {
+        db.processedWebhookEvents.push({ id: eventId, at: iso() });
+        store.save();
+        return { json: { received: true, ignored: true, reason: 'Order not managed by PayPilot.', eventId } };
+      }
+      addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `PayPal webhook verified: ${event} for order ${orderId}.` }, iso());
+      let captureResult = null;
+      if (event === 'CHECKOUT.ORDER.APPROVED' || event === 'PAYMENT.CAPTURE.COMPLETED') {
+        captureResult = await capture(orderId);
+      }
+      db.processedWebhookEvents.push({ id: eventId, at: iso() });
+      store.save();
+      return { json: { received: true, verified: true, event, eventId, orderId, captureResult } };
+    } finally {
+      webhookInflight.delete(eventId);
     }
-    store.save();
-    return { json: { received: true, event, orderId, captureResult } };
   });
   route('POST', '/api/demo/simulate-webhook', async ({ body }) => {
     const orderId = body && body.orderId;
     if (!orderId) throw new HttpError(400, 'orderId is required.');
     const rec = db.orders.find((o) => o.orderId === orderId);
     if (!rec) throw new HttpError(404, 'Order not found.');
-    addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `SIMULATED PayPal webhook: CHECKOUT.ORDER.APPROVED for order ${orderId}.` }, iso());
+    const invoice = db.invoices.find((i) => i.id === rec.invoiceId);
+    if (!invoice || !invoice.demo) throw new HttpError(403, 'Webhook simulation is restricted to demo invoices.');
+    addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `SIMULATED PayPal webhook: CHECKOUT.ORDER.APPROVED for demo order ${orderId}.` }, iso());
     let res;
     try {
       res = await capture(orderId);
@@ -337,8 +368,7 @@ function createApp(opts = {}) {
   route('GET', '/paypal/return', ({ query }) => ({ redirect: `/?payment=return&order=${encodeURIComponent(String(query.token || '').replace(/[^A-Za-z0-9-]/g, ''))}` }));
   route('GET', '/paypal/cancel', ({ query }) => {
     const rec = db.orders.find((o) => o.orderId === query.token);
-    if (rec && rec.status === 'created') {
-      rec.status = 'cancelled';
+    if (rec && rec.status === 'created') {      rec.status = 'cancelled';
       const cp = rec.proposalId && db.proposals.find((x) => x.id === rec.proposalId);
       if (cp && cp.status === 'executed') { cp.status = 'cancelled'; cp.error = 'The buyer cancelled in PayPal. Nothing was paid.'; }
       addAction(db, { invoiceId: rec.invoiceId, type: 'payment_cancelled', detail: `Buyer cancelled PayPal Sandbox order ${rec.orderId}. Invoice unchanged.` }, iso());
@@ -507,7 +537,6 @@ function createApp(opts = {}) {
   });
 
   route('GET', '/api/agent/triage', () => ({ json: portfolioTriage(db.invoices, ctx()) }));
-
   route('POST', '/api/agent/triage/apply', async () => {
     const triage = portfolioTriage(db.invoices, ctx());
     const created = [];
@@ -641,7 +670,7 @@ function createApp(opts = {}) {
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
       const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
-      const out = await m.r.handler({ params, body, query: Object.fromEntries(url.searchParams) });
+      const out = await m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams) });
       if (out.redirect) { res.writeHead(302, { Location: out.redirect }); return res.end(); }
       if (out.html) { res.writeHead(out.status || 200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(out.html); }
       if (out.csv) {
