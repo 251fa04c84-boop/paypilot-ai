@@ -179,6 +179,25 @@ test('demo data is labelled and removable; manual paid is recorded as manual', a
   } finally { t.close(); }
 });
 
+test('audit CSV neutralizes spreadsheet formula prefixes in user-controlled fields', async () => {
+  const t = await boot();
+  try {
+    const malicious = Object.assign({}, NEW, {
+      client: '=HYPERLINK("https://attacker.example","open")',
+      number: '+SUM(1,1)',
+    });
+    const created = await t.call('POST', '/api/invoices', malicious);
+    assert.equal(created.status, 201);
+    const exported = await t.call('GET', '/api/actions/export?format=csv');
+    assert.equal(exported.status, 200);
+    assert.ok(exported.json === null);
+    const response = await fetch(`http://127.0.0.1:${t.app.server.address().port}/api/actions/export?format=csv`);
+    const csv = await response.text();
+    assert.ok(csv.includes("'=HYPERLINK"));
+    assert.ok(csv.includes("'+SUM(1"));
+  } finally { t.close(); }
+});
+
 test('static files are served safely with security headers', async () => {
   const t = await boot();
   try {
