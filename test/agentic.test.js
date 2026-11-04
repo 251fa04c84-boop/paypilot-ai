@@ -22,10 +22,12 @@ function fakeApp(overrides = {}) {
     PAYPAL_CLIENT_SECRET: 'fake-secret',
     GEMINI_API_KEY: '',
     SENDER_NAME: 'Test Team',
+    PAYPAL_WEBHOOK_ID: 'test-webhook-id',
   };
   const fakePayPal = overrides.paypal || {
     configured: () => true,
     createOrder: async ({ invoice }) => ({ id: `ord-${invoice.id}`, approveUrl: `https://fake.paypal.com/checkout?id=ord-${invoice.id}` }),
+    verifyWebhookSignature: async () => true,
     captureOrder: async (id) => {
       const order = store.db.orders.find((o) => o.orderId === id);
       const inv = store.db.invoices.find((i) => i.id === order.invoiceId);
@@ -51,7 +53,7 @@ function fakeApp(overrides = {}) {
   return { app, store, db: store.db };
 }
 
-async function request(server, method, path, body) {
+async function request(server, method, path, body, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const http = require('http');
     const addr = server.address();
@@ -61,7 +63,7 @@ async function request(server, method, path, body) {
       port: addr.port,
       method,
       path,
-      headers: payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {},
+      headers: Object.assign(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}, extraHeaders),
     }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
@@ -220,6 +222,53 @@ test('API: PayPal Webhook verification and simulation captures payment', async (
     const events = store.db.actions.filter((a) => a.invoiceId === inv.id).map((a) => a.type);
     assert.ok(events.includes('webhook_received'));
     assert.ok(events.includes('payment_captured'));
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('API: real PayPal webhook requires valid signature and deduplicates verified event IDs', async () => {
+  let verifyCalls = 0;
+  const paypal = {
+    configured: () => true,
+    verifyWebhookSignature: async (signature) => {
+      verifyCalls++;
+      assert.equal(signature.webhookId, 'test-webhook-id');
+      assert.equal(signature.transmissionId, 'tx-1');
+      return signature.transmissionSig === 'valid-signature';
+    },
+    createOrder: async ({ invoice }) => ({ id: `ord-${invoice.id}`, approveUrl: `https://fake.paypal.com/checkout?id=ord-${invoice.id}` }),
+    captureOrder: async (id) => {
+      const order = store.db.orders.find((o) => o.orderId === id);
+      const inv = store.db.invoices.find((i) => i.id === order.invoiceId);
+      return { id, status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: `cap-${id}`, status: 'COMPLETED', amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) } }] } }] };
+    },
+  };
+  const { app, store } = fakeApp({ paypal });
+  await new Promise((r) => app.server.listen(0, r));
+  try {
+    const inv = { id: 'inv-real-hook-1', client: 'Webhook Customer', number: 'WH-1', amount: 250, currency: 'USD', issueDate: '2026-10-01', dueDate: '2026-10-20', status: 'open', disputed: false };
+    store.db.invoices.push(inv);
+    await request(app.server, 'POST', `/api/invoices/${inv.id}/pay`);
+    const order = store.db.orders.find((o) => o.invoiceId === inv.id);
+    const event = { id: 'WH-EVENT-0001', event_type: 'CHECKOUT.ORDER.APPROVED', resource: { id: order.orderId } };
+    const headers = { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/cert/test', 'paypal-transmission-id': 'tx-1', 'paypal-transmission-sig': 'invalid', 'paypal-transmission-time': '2026-10-27T12:00:00Z' };
+    const rejected = await request(app.server, 'POST', '/api/paypal/webhook', event, headers);
+    assert.equal(rejected.status, 401);
+    assert.equal(inv.status, 'open');
+    assert.equal(store.db.processedWebhookEvents.length, 0);
+
+    headers['paypal-transmission-sig'] = 'valid-signature';
+    const accepted = await request(app.server, 'POST', '/api/paypal/webhook', event, headers);
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.json.verified, true);
+    assert.equal(inv.status, 'paid');
+    assert.equal(store.db.processedWebhookEvents.length, 1);
+
+    const duplicate = await request(app.server, 'POST', '/api/paypal/webhook', event, headers);
+    assert.equal(duplicate.status, 200);
+    assert.equal(duplicate.json.duplicate, true);
+    assert.equal(verifyCalls, 3);
   } finally {
     await new Promise((r) => app.server.close(r));
   }
