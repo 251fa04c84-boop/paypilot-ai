@@ -197,7 +197,7 @@ test('API: PayPal Webhook verification and simulation captures payment', async (
   await new Promise((r) => app.server.listen(0, r));
   try {
     // Add open invoice
-    const inv = { id: 'inv-webhook-1', client: 'Webhooks Inc', number: 'W-100', amount: 250, currency: 'USD', issueDate: '2026-10-01', dueDate: '2026-10-20', status: 'open', disputed: false };
+    const inv = { id: 'inv-webhook-1', client: 'Webhooks Inc (demo)', number: 'W-100', amount: 250, currency: 'USD', issueDate: '2026-10-01', dueDate: '2026-10-20', status: 'open', demo: true, disputed: false };
     store.db.invoices.push(inv);
 
     // Create a checkout order
