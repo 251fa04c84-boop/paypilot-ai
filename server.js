@@ -202,7 +202,13 @@ function createApp(opts = {}) {
     const format = (query.format || 'csv').toLowerCase();
     const list = db.actions.slice().reverse();
     if (format === 'json') return { json: list };
-    const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+    // Neutralize spreadsheet formula prefixes before CSV quoting. This reduces formula-injection risk
+    // when an exported audit field is opened in common spreadsheet applications.
+    const escapeCsv = (str) => {
+      let value = String(str == null ? '' : str);
+      if (/^[\\s\\u0000-\\u001f]*[=+\\-@]/.test(value)) value = "'" + value;
+      return `"${value.replace(/"/g, '""')}"`;
+    };
     const headers = ['Timestamp', 'Invoice ID', 'Invoice Number', 'Client', 'Event Type', 'Details', 'Proposal ID'];
     const rows = list.map((a) => {
       const inv = db.invoices.find((i) => i.id === a.invoiceId);
