@@ -44,7 +44,7 @@ function fakeApp(overrides = {}) {
   };
 
   const app = createApp({
-    env,
+    env: Object.assign({}, env, overrides.env || {}),
     store,
     now: overrides.now || (() => new Date('2026-10-27T12:00:00Z')),
     paypal: fakePayPal,
@@ -269,6 +269,73 @@ test('API: real PayPal webhook requires valid signature and deduplicates verifie
     assert.equal(duplicate.status, 200);
     assert.equal(duplicate.json.duplicate, true);
     assert.equal(verifyCalls, 3);
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('API: failed webhook capture remains retryable with the same event ID', async () => {
+  let captureAttempts = 0;
+  const paypal = {
+    configured: () => true,
+    verifyWebhookSignature: async () => true,
+    createOrder: async ({ invoice }) => ({ id: `ord-${invoice.id}`, approveUrl: 'https://fake.paypal.com/approve' }),
+    captureOrder: async (id) => {
+      captureAttempts++;
+      if (captureAttempts === 1) throw new Error('temporary PayPal outage');
+      const inv = store.db.invoices.find((x) => x.id === 'inv-retry-hook');
+      return { id, status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'cap-retry', status: 'COMPLETED', amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) } }] } }] };
+    },
+  };
+  const { app, store } = fakeApp({ paypal });
+  await new Promise((r) => app.server.listen(0, r));
+  try {
+    const inv = { id: 'inv-retry-hook', client: 'Retry Customer', number: 'WH-RETRY', amount: 85, currency: 'USD', issueDate: '2026-10-01', dueDate: '2026-10-20', status: 'open', disputed: false };
+    store.db.invoices.push(inv);
+    await request(app.server, 'POST', `/api/invoices/${inv.id}/pay`);
+    const order = store.db.orders.find((o) => o.invoiceId === inv.id);
+    const event = { id: 'WH-EVENT-RETRY', event_type: 'CHECKOUT.ORDER.APPROVED', resource: { id: order.orderId } };
+    const headers = { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/cert/test', 'paypal-transmission-id': 'tx-retry', 'paypal-transmission-sig': 'valid', 'paypal-transmission-time': '2026-10-27T12:00:00Z' };
+    const failed = await request(app.server, 'POST', '/api/paypal/webhook', event, headers);
+    assert.equal(failed.status, 502);
+    assert.equal(inv.status, 'open');
+    assert.equal(store.db.processedWebhookEvents.some((x) => x.id === event.id), false);
+
+    const retried = await request(app.server, 'POST', '/api/paypal/webhook', event, headers);
+    assert.equal(retried.status, 200);
+    assert.equal(inv.status, 'paid');
+    assert.equal(captureAttempts, 2);
+    assert.equal(store.db.processedWebhookEvents.filter((x) => x.id === event.id).length, 1);
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('API: real PayPal webhook fails closed when webhook ID is not configured', async () => {
+  const { app, store } = fakeApp({ env: { PAYPAL_WEBHOOK_ID: '' } });
+  await new Promise((r) => app.server.listen(0, r));
+  try {
+    const event = { id: 'WH-NO-CONFIG', event_type: 'CHECKOUT.ORDER.APPROVED', resource: { id: 'ORDER-12345' } };
+    const headers = { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/cert/test', 'paypal-transmission-id': 'tx-missing', 'paypal-transmission-sig': 'valid', 'paypal-transmission-time': '2026-10-27T12:00:00Z' };
+    const response = await request(app.server, 'POST', '/api/paypal/webhook', event, headers);
+    assert.equal(response.status, 503);
+    assert.equal(store.db.processedWebhookEvents.length, 0);
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
+test('API: webhook simulator refuses non-demo invoices', async () => {
+  const { app, store } = fakeApp();
+  await new Promise((r) => app.server.listen(0, r));
+  try {
+    const inv = { id: 'inv-live-no-sim', client: 'Real Customer', number: 'LIVE-1', amount: 90, currency: 'USD', issueDate: '2026-10-01', dueDate: '2026-10-20', status: 'open', disputed: false };
+    store.db.invoices.push(inv);
+    await request(app.server, 'POST', `/api/invoices/${inv.id}/pay`);
+    const order = store.db.orders.find((o) => o.invoiceId === inv.id);
+    const response = await request(app.server, 'POST', '/api/demo/simulate-webhook', { orderId: order.orderId });
+    assert.equal(response.status, 403);
+    assert.equal(inv.status, 'open');
   } finally {
     await new Promise((r) => app.server.close(r));
   }
