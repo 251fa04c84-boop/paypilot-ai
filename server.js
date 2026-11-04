@@ -206,7 +206,7 @@ function createApp(opts = {}) {
     // when an exported audit field is opened in common spreadsheet applications.
     const escapeCsv = (str) => {
       let value = String(str == null ? '' : str);
-      if (/^[\\s\\u0000-\\u001f]*[=+\\-@]/.test(value)) value = "'" + value;
+      if (/^[\s\u0000-\u001f]*[=+@-]/.test(value)) value = "'" + value;
       return `"${value.replace(/"/g, '""')}"`;
     };
     const headers = ['Timestamp', 'Invoice ID', 'Invoice Number', 'Client', 'Event Type', 'Details', 'Proposal ID'];
