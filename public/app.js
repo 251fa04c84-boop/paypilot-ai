@@ -45,6 +45,7 @@ async function loadStatus() {
   try {
     const hh = state.health = await api('GET', '/api/health');
     s.append(pill(hh.paypal.configured ? 'ok' : 'warn', hh.paypal.configured ? 'PayPal Sandbox: connected' : 'PayPal Sandbox: not configured'), aiPill(hh.ai), pill('warn', 'Restricted demo · demo data only'));
+    if (!hh.demo.publicMutationsEnabled) s.append(pill('warn', 'Read-only public preview · interactive actions disabled'));
     if (hh.demo.simulateAi) s.append(pill('bad', 'SIMULATED AI outage'));
     if (hh.demo.simulatePaypal) s.append(pill('bad', 'SIMULATED PayPal outage'));
   } catch (_) { s.append(pill('bad', 'Server unreachable')); }
