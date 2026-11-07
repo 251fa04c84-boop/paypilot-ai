@@ -256,7 +256,7 @@ test('state-changing API requests reject cross-site browser origins', async () =
 
 
 test('public production mode blocks shared demo reset and global outage toggles', async () => {
-  const t = await boot({ env: { NODE_ENV: 'production' } });
+  const t = await boot({ env: { NODE_ENV: 'production', ENABLE_PUBLIC_DEMO_MUTATIONS: 'true' } });
   try {
     const health = await t.call('GET', '/api/health');
     assert.equal(health.json.demo.adminControlsEnabled, false);
@@ -319,7 +319,7 @@ test('PayPal webhook requires a valid signature and deduplicates verified events
 
 
 test('public production mode blocks simulated payment settlement', async () => {
-  const t = await boot({ env: { NODE_ENV: 'production' } });
+  const t = await boot({ env: { NODE_ENV: 'production', ENABLE_PUBLIC_DEMO_MUTATIONS: 'true' } });
   try {
     assert.equal((await t.call('POST', '/api/demo/seed')).status, 201);
     const invoice = (await t.call('GET', '/api/invoices')).json.find((i) => i.demo && i.status === 'open');
@@ -356,7 +356,7 @@ test('Render production marker activates public demo restrictions without NODE_E
 });
 
 test('public production demo blocks invoice creation and destructive/manual record edits', async () => {
-  const t = await boot({ env: { NODE_ENV: 'production' } });
+  const t = await boot({ env: { NODE_ENV: 'production', ENABLE_PUBLIC_DEMO_MUTATIONS: 'true' } });
   try {
     assert.equal((await t.call('POST', '/api/demo/seed')).status, 201);
     const invoices = (await t.call('GET', '/api/invoices')).json;
