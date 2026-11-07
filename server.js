@@ -29,6 +29,8 @@ function createApp(opts = {}) {
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
+  // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
+  const demoAdminEnabled = env.ENABLE_DEMO_ADMIN === 'true' || (env.NODE_ENV !== 'production' && env.ENABLE_DEMO_ADMIN !== 'false');
   const inflight = new Set();
   const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
@@ -148,7 +150,7 @@ function createApp(opts = {}) {
     routes.push({ method, re, keys, handler });
   };
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal) } } }));
+  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled } } }));
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     const inv = cleanInvoice(body, { id: newId(), status: 'open', demo: false, reminderCount: 0, lastReminderAt: null, createdAt: iso() });
@@ -386,6 +388,7 @@ function createApp(opts = {}) {
   });
   route('POST', '/api/demo/seed', () => { seedDemo(); return { status: 201, json: { seeded: true } }; });
   route('DELETE', '/api/demo', () => {
+    if (!demoAdminEnabled) throw new HttpError(403, 'Shared demo reset is disabled on the public deployment.');
     const ids = new Set(db.invoices.filter((i) => i.demo).map((i) => i.id));
     db.invoices = db.invoices.filter((i) => !ids.has(i.id)); store.db.invoices = db.invoices;
     for (const k of ['drafts', 'orders', 'actions', 'proposals']) { const keep = db[k].filter((x) => !ids.has(x.invoiceId)); db[k].length = 0; db[k].push(...keep); }
@@ -634,6 +637,7 @@ function createApp(opts = {}) {
   });
 
   route('POST', '/api/demo/simulate', ({ body }) => {
+    if (!demoAdminEnabled) throw new HttpError(403, 'Global outage simulation controls are disabled on the public deployment.');
     if ('ai' in body) settings.simulateAi = Boolean(body.ai);
     if ('paypal' in body) settings.simulatePaypal = Boolean(body.paypal);
     store.save();
