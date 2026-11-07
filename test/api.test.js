@@ -179,14 +179,66 @@ test('PayPal: not approved, unknown order, tampered amount, pending, cancel', as
   } finally { t.close(); }
 });
 
-test('PayPal not configured: honest 503, health says so, pay link page does not pretend', async () => {
+test('PayPal not configured: honest 503, health says so, payment-link GET stays side-effect free', async () => {
   const t = await boot({ paypal: fakePayPal({ configured: false }) });
   try {
     const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
     assert.equal((await t.call('POST', `/api/invoices/${id}/pay`)).status, 503);
     assert.equal((await t.call('GET', '/api/health')).json.paypal.configured, false);
     const page = await fetch(`http://127.0.0.1:${t.app.server.address().port}/pay/${id}`);
-    assert.equal(page.status, 503); assert.match(await page.text(), /not configured/);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /Continue to PayPal Sandbox/);
+    const checkout = await t.call('POST', `/pay/${id}/checkout`);
+    assert.equal(checkout.status, 503);
+  } finally { t.close(); }
+});
+
+test('payment-link GET never creates a PayPal order; explicit POST does', async () => {
+  const paypal = fakePayPal();
+  const t = await boot({ paypal });
+  try {
+    const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
+    const page = await fetch(`http://127.0.0.1:${t.app.server.address().port}/pay/${id}`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), new RegExp(`action="/pay/${id}/checkout"`));
+    assert.equal(paypal.calls.create, 0);
+    const checkout = await t.call('POST', `/pay/${id}/checkout`);
+    assert.equal(checkout.status, 302);
+    assert.match(checkout.headers.get('location'), /sandbox\\.paypal\\.test/);
+    assert.equal(paypal.calls.create, 1);
+  } finally { t.close(); }
+});
+
+test('production read-only mode blocks payment-link POST while allowing harmless GET', async () => {
+  const paypal = fakePayPal();
+  const t = await boot({ paypal, env: { NODE_ENV: 'production' } });
+  try {
+    t.app.seedDemo();
+    const invoice = t.app.db.invoices.find((i) => i.status === 'open' && !i.disputed);
+    const page = await fetch(`http://127.0.0.1:${t.app.server.address().port}/pay/${invoice.id}`);
+    assert.equal(page.status, 200);
+    assert.equal((await t.call('POST', `/pay/${invoice.id}/checkout`)).status, 403);
+    assert.equal(paypal.calls.create, 0);
+  } finally { t.close(); }
+});
+
+test('GET proposal views show expiry without mutating the database or audit trail', async () => {
+  const t = await boot();
+  try {
+    const invoice = (await t.call('POST', '/api/invoices', NEW)).json;
+    const proposal = (await t.call('POST', `/api/invoices/${invoice.id}/proposals`, { action: 'send_reminder' })).json;
+    const stored = t.app.db.proposals.find((p) => p.id === proposal.id);
+    stored.expiresAt = '2020-01-01T00:00:00.000Z';
+    const beforeActions = t.app.db.actions.length;
+    const detail = await t.call('GET', `/api/invoices/${invoice.id}`);
+    assert.equal(detail.json.proposals[0].status, 'expired');
+    const list = await t.call('GET', '/api/proposals');
+    assert.equal(list.json.find((p) => p.id === proposal.id).status, 'expired');
+    assert.equal(stored.status, 'pending');
+    assert.equal(t.app.db.actions.length, beforeActions);
+    assert.equal((await t.call('POST', `/api/proposals/${proposal.id}/decision`, { decision: 'approve' })).status, 409);
+    assert.equal(stored.status, 'expired');
+    assert.equal(t.app.db.actions.length, beforeActions + 1);
   } finally { t.close(); }
 });
 
