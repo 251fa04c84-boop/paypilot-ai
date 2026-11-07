@@ -323,6 +323,16 @@ test('oversized JSON bodies receive a controlled 413 response without destroying
 });
 
 
+test('Render production marker activates public demo restrictions without NODE_ENV', async () => {
+  const t = await boot({ env: { RENDER: 'true' } });
+  try {
+    const health = await t.call('GET', '/api/health');
+    assert.equal(health.json.demo.adminControlsEnabled, false);
+    assert.equal((await t.call('POST', '/api/invoices', NEW)).status, 403);
+    assert.equal((await t.call('POST', '/api/demo/simulate', { ai: true })).status, 403);
+  } finally { t.close(); }
+});
+
 test('public production demo blocks invoice creation and destructive/manual record edits', async () => {
   const t = await boot({ env: { NODE_ENV: 'production' } });
   try {
