@@ -22,8 +22,8 @@ async function boot({ paypal, aiFetch, env = {} } = {}) {
   const app = createApp({ env: Object.assign({ APP_BASE_URL: 'http://test.local' }, env), store: createStore(null), paypal: paypal || fakePayPal({ invoice: () => app.db.invoices[0] }), aiFetch, now: () => new Date('2026-03-10T12:00:00Z') });
   await new Promise((r) => app.server.listen(0, r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
-  const call = async (method, path, body) => {
-    const res = await fetch(base + path, { method, redirect: 'manual', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const call = async (method, path, body, extraHeaders = {}) => {
+    const res = await fetch(base + path, { method, redirect: 'manual', headers: Object.assign(body ? { 'Content-Type': 'application/json' } : {}, extraHeaders), body: body ? JSON.stringify(body) : undefined });
     let json = null; try { json = await res.json(); } catch (_) {}
     return { status: res.status, json, headers: res.headers };
   };
@@ -207,5 +207,22 @@ test('static files are served safely with security headers', async () => {
     assert.equal((await fetch(base + '/../server.js')).status, 404);
     assert.equal((await fetch(base + '/%2e%2e/server.js')).status, 404);
     assert.equal((await fetch(base + '/data/db.json')).status, 404);
+  } finally { t.close(); }
+});
+
+
+test('state-changing API requests reject cross-site browser origins', async () => {
+  const t = await boot();
+  try {
+    const hostile = await t.call('POST', '/api/demo/simulate', { ai: true }, { Origin: 'https://attacker.example' });
+    assert.equal(hostile.status, 403);
+    assert.match(hostile.json.error, /origin/i);
+
+    const crossSite = await t.call('POST', '/api/demo/simulate', { ai: true }, { 'Sec-Fetch-Site': 'cross-site' });
+    assert.equal(crossSite.status, 403);
+
+    const sameOrigin = await t.call('POST', '/api/demo/simulate', { ai: false }, { Origin: 'http://127.0.0.1:' + t.app.server.address().port });
+    assert.equal(sameOrigin.status, 200);
+    assert.equal(sameOrigin.json.simulateAi, false);
   } finally { t.close(); }
 });
