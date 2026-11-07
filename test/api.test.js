@@ -244,3 +244,53 @@ test('public production mode blocks shared demo reset and global outage toggles'
     assert.equal((await t.call('GET', '/api/invoices')).json.length, 8);
   } finally { t.close(); }
 });
+
+
+test('PayPal webhook requires a valid signature and deduplicates verified events', async () => {
+  let t;
+  let verificationCalls = 0;
+  const pp = fakePayPal({ invoice: () => t.app.db.invoices[0] });
+  pp.verifyWebhookSignature = async (signature) => {
+    verificationCalls++;
+    assert.equal(signature.webhookId, 'WH-TEST-123');
+    return signature.transmissionSig === 'valid-signature';
+  };
+  t = await boot({ paypal: pp, env: { PAYPAL_WEBHOOK_ID: 'WH-TEST-123' } });
+  const headers = {
+    'paypal-auth-algo': 'SHA256withRSA',
+    'paypal-cert-url': 'https://api.sandbox.paypal.com/certs/test',
+    'paypal-transmission-id': 'transmission-1',
+    'paypal-transmission-sig': 'valid-signature',
+    'paypal-transmission-time': '2026-03-10T12:00:00Z',
+  };
+  try {
+    const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
+    await t.call('POST', `/api/invoices/${id}/pay`);
+    const orderId = t.app.db.orders[0].orderId;
+    const event = { id: 'EVT-ONE', event_type: 'CHECKOUT.ORDER.APPROVED', resource: { id: orderId } };
+
+    const missingHeaders = await t.call('POST', '/api/paypal/webhook', event);
+    assert.equal(missingHeaders.status, 401);
+    assert.equal(verificationCalls, 0);
+    assert.equal(t.app.db.invoices[0].status, 'open');
+
+    const invalid = await t.call('POST', '/api/paypal/webhook', event, Object.assign({}, headers, {
+      'paypal-transmission-sig': 'invalid-signature',
+    }));
+    assert.equal(invalid.status, 401);
+    assert.equal(t.app.db.invoices[0].status, 'open');
+
+    const accepted = await t.call('POST', '/api/paypal/webhook', event, headers);
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.json.verified, true);
+    assert.equal(accepted.json.captureResult.outcome, 'paid');
+    assert.equal(t.app.db.invoices[0].status, 'paid');
+    assert.equal(pp.calls.capture, 1);
+
+    const duplicate = await t.call('POST', '/api/paypal/webhook', event, headers);
+    assert.equal(duplicate.status, 200);
+    assert.equal(duplicate.json.duplicate, true);
+    assert.equal(pp.calls.capture, 1);
+    assert.equal(t.app.db.processedWebhookEvents.filter((x) => x.id === 'EVT-ONE').length, 1);
+  } finally { t.close(); }
+});
