@@ -294,3 +294,19 @@ test('PayPal webhook requires a valid signature and deduplicates verified events
     assert.equal(t.app.db.processedWebhookEvents.filter((x) => x.id === 'EVT-ONE').length, 1);
   } finally { t.close(); }
 });
+
+
+test('public production mode blocks simulated payment settlement', async () => {
+  const t = await boot({ env: { NODE_ENV: 'production' } });
+  try {
+    assert.equal((await t.call('POST', '/api/demo/seed')).status, 201);
+    const invoice = (await t.call('GET', '/api/invoices')).json.find((i) => i.demo && i.status === 'open');
+    assert.ok(invoice);
+    assert.equal((await t.call('POST', `/api/invoices/${invoice.id}/pay`)).status, 200);
+    const orderId = t.app.db.orders[0].orderId;
+    const simulated = await t.call('POST', '/api/demo/simulate-webhook', { orderId });
+    assert.equal(simulated.status, 403);
+    assert.equal(t.app.db.invoices.find((i) => i.id === invoice.id).status, 'open');
+    assert.equal(t.app.db.orders[0].status, 'created');
+  } finally { t.close(); }
+});

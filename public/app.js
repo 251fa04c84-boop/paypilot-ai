@@ -143,7 +143,7 @@ function proposalCard(p) {
     const orderId = p.orderId || (p.result.approveUrl.match(/token=([A-Za-z0-9-]+)/) || [])[1];
     bar.append(
       h('a', { class: 'btn primary', href: p.result.approveUrl, target: '_blank', rel: 'noopener' }, 'Open PayPal Sandbox checkout'),
-      orderId && h('button', { class: 'btn', onclick: lock('Simulating webhook capture…', async () => {
+      state.health && state.health.demo.adminControlsEnabled && orderId && h('button', { class: 'btn', onclick: lock('Simulating webhook capture…', async () => {
         const sim = await api('POST', '/api/demo/simulate-webhook', { orderId });
         toast(sim.result && sim.result.outcome === 'paid' ? 'Payment capture verified with PayPal!' : 'Webhook simulated.');
         await finish();

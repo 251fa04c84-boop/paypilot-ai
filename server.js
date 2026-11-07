@@ -331,6 +331,7 @@ function createApp(opts = {}) {
     }
   });
   route('POST', '/api/demo/simulate-webhook', async ({ body }) => {
+    if (!demoAdminEnabled) throw new HttpError(403, 'Simulated payment settlement is disabled on the public deployment. Use a real PayPal Sandbox approval and verified capture.');
     const orderId = body && body.orderId;
     if (!orderId) throw new HttpError(400, 'orderId is required.');
     const rec = db.orders.find((o) => o.orderId === orderId);
