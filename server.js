@@ -63,6 +63,9 @@ function createApp(opts = {}) {
 
   const find = (list, id, label) => { const x = list.find((i) => i.id === id); if (!x) throw new HttpError(404, `${label} not found.`); return x; };
   const withA = (inv) => Object.assign({}, inv, { assessment: P.assess(inv, todayStr()) });
+  const requireMutableDemo = () => {
+    if (env.NODE_ENV === 'production') throw new HttpError(403, 'Invoice editing is disabled on the public demo. Use the supplied judge scenarios.');
+  };
 
   function cleanInvoice(b, base = {}) {
     const inv = Object.assign({}, base);
@@ -153,6 +156,7 @@ function createApp(opts = {}) {
   route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled } } }));
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
+    requireMutableDemo();
     const inv = cleanInvoice(body, { id: newId(), status: 'open', demo: false, reminderCount: 0, lastReminderAt: null, createdAt: iso() });
     if (!('currency' in body)) inv.currency = 'USD';
     db.invoices.push(inv);
@@ -165,6 +169,7 @@ function createApp(opts = {}) {
     return { json: Object.assign(withA(inv), { proposals: db.proposals.filter((p) => p.invoiceId === inv.id).map((p) => view(refreshExpiry(p))).reverse(), drafts: db.drafts.filter((d) => d.invoiceId === inv.id), actions: db.actions.filter((a) => a.invoiceId === inv.id).reverse() }) };
   });
   route('PUT', '/api/invoices/:id', ({ params, body }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.status === 'paid') throw new HttpError(409, 'Paid invoices cannot be edited.');
     const upd = cleanInvoice(body, inv);
@@ -177,6 +182,7 @@ function createApp(opts = {}) {
     return { json: withA(inv) };
   });
   route('DELETE', '/api/invoices/:id', ({ params }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.paymentMethod === 'paypal_sandbox') throw new HttpError(409, 'Invoices with a recorded PayPal payment cannot be deleted. Void is not available once paid; keep it for the audit trail.');
     db.invoices = db.invoices.filter((i) => i.id !== inv.id); store.db.invoices = db.invoices;
@@ -185,6 +191,7 @@ function createApp(opts = {}) {
     return { json: { deleted: true } };
   });
   route('POST', '/api/invoices/:id/mark-paid-manually', ({ params }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.status !== 'open') throw new HttpError(409, `Invoice is ${inv.status}.`);
     inv.status = 'paid'; inv.paidAt = todayStr(); inv.paymentMethod = 'manual';
@@ -531,6 +538,7 @@ function createApp(opts = {}) {
   });
 
   route('POST', '/api/invoices/:id/dispute', ({ params, body }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.status !== 'open') throw new HttpError(409, `Invoice is ${inv.status}.`);
     const flag = Boolean(body.disputed);
