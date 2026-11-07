@@ -18,8 +18,8 @@ function fakePayPal(script = {}) {
   };
 }
 
-async function boot({ paypal, aiFetch, env = {} } = {}) {
-  const app = createApp({ env: Object.assign({ APP_BASE_URL: 'http://test.local' }, env), store: createStore(null), paypal: paypal || fakePayPal({ invoice: () => app.db.invoices[0] }), aiFetch, now: () => new Date('2026-03-10T12:00:00Z') });
+async function boot({ paypal, aiFetch, env = {}, limits } = {}) {
+  const app = createApp({ env: Object.assign({ APP_BASE_URL: 'http://test.local' }, env), store: createStore(null), paypal: paypal || fakePayPal({ invoice: () => app.db.invoices[0] }), aiFetch, limits, now: () => new Date('2026-03-10T12:00:00Z') });
   await new Promise((r) => app.server.listen(0, r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   const call = async (method, path, body, extraHeaders = {}) => {
@@ -356,3 +356,4 @@ test('public production demo blocks invoice creation and destructive/manual reco
     assert.equal(after.disputed, false);
   } finally { t.close(); }
 });
+\n\ntest('rate limiting ignores spoofed forwarded IP headers unless a trusted proxy is explicitly enabled', async () => {\n  let t = await boot({ limits: { general: 1 } });\n  try {\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 429);\n  } finally { t.close(); }\n  t = await boot({ env: { TRUST_PROXY: 'true' }, limits: { general: 1 } });\n  try {\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 200);\n  } finally { t.close(); }\n});\n
