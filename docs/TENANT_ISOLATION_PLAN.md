@@ -30,3 +30,11 @@ The current HTTP handler closes over one `store` and one `db`. Invoice, draft, p
 ## Release gate
 
 Do not enable private tenant creation or describe PayPilot as multi-tenant until all acceptance tests pass against the persistent repository implementation. Keep the current app labelled as a restricted shared demo, and do not collect real customer data or real funds.
+
+## Infrastructure bootstrap (2026-11-07)
+
+- A dedicated PayPilot Neon Postgres project has been created under the account's confirmed Free plan, in `aws-ap-southeast-1`, with a 0.25 CU compute ceiling. This is separate from the user's TraceBack AI and RAJ projects.
+- The DDL in `db/schema.sql` has been applied successfully to the new `paypilot` database and is committed in the repository.
+- Tables cover tenant identity/state, hashed session references, PayPal order-to-tenant routing, and globally unique webhook event IDs.
+- **Application integration is not complete.** The running app still uses the legacy shared JSON store. No tenant sessions or customer records have been created, and the live Render deployment has not been changed.
+- The next implementation phase must add a request-scoped Postgres repository, signed opaque cookies, transaction/locking behavior, webhook routing through `paypilot_paypal_order_routes`, and cross-tenant acceptance tests. Do not claim multi-tenancy until those tests pass.
