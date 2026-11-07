@@ -685,7 +685,7 @@ function createApp(opts = {}) {
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
-    const headers = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
+    const headers = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', 'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
     for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
     try {
       const m = routes.map((r) => ({ r, x: r.re.exec(url.pathname) })).find(({ r, x }) => x && r.method === req.method);
