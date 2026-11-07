@@ -321,3 +321,23 @@ test('oversized JSON bodies receive a controlled 413 response without destroying
     assert.equal((await t.call('GET', '/api/invoices')).json.length, 0);
   } finally { t.close(); }
 });
+
+
+test('public production demo blocks invoice creation and destructive/manual record edits', async () => {
+  const t = await boot({ env: { NODE_ENV: 'production' } });
+  try {
+    assert.equal((await t.call('POST', '/api/demo/seed')).status, 201);
+    const invoices = (await t.call('GET', '/api/invoices')).json;
+    const invoice = invoices.find((i) => i.demo && i.status === 'open');
+    assert.ok(invoice);
+    assert.equal((await t.call('POST', '/api/invoices', NEW)).status, 403);
+    assert.equal((await t.call('PUT', '/api/invoices/' + invoice.id, { notes: 'tampered' })).status, 403);
+    assert.equal((await t.call('DELETE', '/api/invoices/' + invoice.id)).status, 403);
+    assert.equal((await t.call('POST', '/api/invoices/' + invoice.id + '/mark-paid-manually')).status, 403);
+    assert.equal((await t.call('POST', '/api/invoices/' + invoice.id + '/dispute', { disputed: true })).status, 403);
+    const after = (await t.call('GET', '/api/invoices')).json.find((i) => i.id === invoice.id);
+    assert.equal(after.status, 'open');
+    assert.equal(after.notes, '');
+    assert.equal(after.disputed, false);
+  } finally { t.close(); }
+});
