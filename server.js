@@ -18,6 +18,7 @@ class HttpError extends Error { constructor(status, message, extra) { super(mess
 
 function createApp(opts = {}) {
   const env = opts.env || process.env;
+  const isProduction = env.NODE_ENV === 'production' || env.RENDER === 'true';
   const port = Number(env.PORT) || 3000;
   const baseUrl = (env.APP_BASE_URL || env.RENDER_EXTERNAL_URL || `http://localhost:${port}`).replace(/\/$/, '');
   const now = opts.now || (() => new Date());
@@ -30,7 +31,7 @@ function createApp(opts = {}) {
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
   // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
-  const demoAdminEnabled = env.ENABLE_DEMO_ADMIN === 'true' || (env.NODE_ENV !== 'production' && env.ENABLE_DEMO_ADMIN !== 'false');
+  const demoAdminEnabled = env.ENABLE_DEMO_ADMIN === 'true' || (!isProduction && env.ENABLE_DEMO_ADMIN !== 'false');
   const inflight = new Set();
   const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
@@ -64,7 +65,7 @@ function createApp(opts = {}) {
   const find = (list, id, label) => { const x = list.find((i) => i.id === id); if (!x) throw new HttpError(404, `${label} not found.`); return x; };
   const withA = (inv) => Object.assign({}, inv, { assessment: P.assess(inv, todayStr()) });
   const requireMutableDemo = () => {
-    if (env.NODE_ENV === 'production') throw new HttpError(403, 'Invoice editing is disabled on the public demo. Use the supplied judge scenarios.');
+    if (isProduction) throw new HttpError(403, 'Invoice editing is disabled on the public demo. Use the supplied judge scenarios.');
   };
 
   function cleanInvoice(b, base = {}) {
