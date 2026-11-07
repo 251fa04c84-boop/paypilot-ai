@@ -209,6 +209,11 @@ test('static files are served safely with security headers', async () => {
     const base = `http://127.0.0.1:${t.app.server.address().port}`;
     const idx = await fetch(base + '/'); assert.equal(idx.status, 200);
     assert.ok(idx.headers.get('content-security-policy').includes("default-src 'self'"));
+    assert.equal(idx.headers.get('x-frame-options'), 'DENY');
+    assert.equal(idx.headers.get('permissions-policy'), 'camera=(), microphone=(), geolocation=()');
+    const api = await fetch(base + '/api/invoices');
+    assert.equal(api.headers.get('cache-control'), 'no-store');
+    assert.equal(api.headers.get('pragma'), 'no-cache');
     assert.equal((await fetch(base + '/../server.js')).status, 404);
     assert.equal((await fetch(base + '/%2e%2e/server.js')).status, 404);
     assert.equal((await fetch(base + '/data/db.json')).status, 404);
