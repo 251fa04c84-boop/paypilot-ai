@@ -31,6 +31,23 @@ async function boot({ paypal, aiFetch, env = {}, limits } = {}) {
 }
 const NEW = { client: 'Acme', number: 'INV-1', amount: 120.5, currency: 'USD', issueDate: '2026-01-01', dueDate: '2026-02-20' };
 
+test('production public demo mutations are read-only unless explicitly enabled; verified PayPal endpoints remain reachable', async () => {
+  let t = await boot({ env: { NODE_ENV: 'production' } });
+  try {
+    t.app.seedDemo();
+    assert.equal((await t.call('GET', '/api/invoices')).status, 200);
+    assert.equal((await t.call('POST', '/api/assistant/chat', { query: 'summarize overdue invoices' })).status, 403);
+    assert.equal((await t.call('POST', '/api/demo/seed', {})).status, 403);
+    assert.equal((await t.call('POST', '/api/paypal/capture', { orderId: 'UNKNOWN1' })).status, 404);
+  } finally { t.close(); }
+
+  t = await boot({ env: { NODE_ENV: 'production', ENABLE_PUBLIC_DEMO_MUTATIONS: 'true' } });
+  try {
+    assert.equal((await t.call('POST', '/api/demo/seed', {})).status, 201);
+    assert.equal((await t.call('GET', '/api/invoices')).json.length, 8);
+  } finally { t.close(); }
+});
+
 test('invoice CRUD with validation', async () => {
   const t = await boot();
   try {
