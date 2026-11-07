@@ -369,4 +369,4 @@ test('rate limiting ignores spoofed forwarded IP headers unless a trusted proxy 
     assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);
     assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 200);
   } finally { t.close(); }
-});\n
+})});
