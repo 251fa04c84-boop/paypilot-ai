@@ -186,8 +186,8 @@ test('PayPal not configured: honest 503, health says so, payment-link GET stays 
     assert.equal((await t.call('POST', `/api/invoices/${id}/pay`)).status, 503);
     assert.equal((await t.call('GET', '/api/health')).json.paypal.configured, false);
     const page = await fetch(`http://127.0.0.1:${t.app.server.address().port}/pay/${id}`);
-    assert.equal(page.status, 200);
-    assert.match(await page.text(), /Continue to PayPal Sandbox/);
+    assert.equal(page.status, 503);
+    assert.match(await page.text(), /PayPal Sandbox is not configured/);
     const checkout = await t.call('POST', `/pay/${id}/checkout`);
     assert.equal(checkout.status, 503);
   } finally { t.close(); }
@@ -216,7 +216,8 @@ test('production read-only mode blocks payment-link POST while allowing harmless
     t.app.seedDemo();
     const invoice = t.app.db.invoices.find((i) => i.status === 'open' && !i.disputed);
     const page = await fetch(`http://127.0.0.1:${t.app.server.address().port}/pay/${invoice.id}`);
-    assert.equal(page.status, 200);
+    assert.equal(page.status, 403);
+    assert.match(await page.text(), /Interactive checkout is disabled/);
     assert.equal((await t.call('POST', `/pay/${invoice.id}/checkout`)).status, 403);
     assert.equal(paypal.calls.create, 0);
   } finally { t.close(); }
