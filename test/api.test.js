@@ -356,4 +356,17 @@ test('public production demo blocks invoice creation and destructive/manual reco
     assert.equal(after.disputed, false);
   } finally { t.close(); }
 });
-\n\ntest('rate limiting ignores spoofed forwarded IP headers unless a trusted proxy is explicitly enabled', async () => {\n  let t = await boot({ limits: { general: 1 } });\n  try {\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 429);\n  } finally { t.close(); }\n  t = await boot({ env: { TRUST_PROXY: 'true' }, limits: { general: 1 } });\n  try {\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);\n    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 200);\n  } finally { t.close(); }\n});\n
+
+
+test('rate limiting ignores spoofed forwarded IP headers unless a trusted proxy is explicitly enabled', async () => {
+  let t = await boot({ limits: { general: 1 } });
+  try {
+    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);
+    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 429);
+  } finally { t.close(); }
+  t = await boot({ env: { TRUST_PROXY: 'true' }, limits: { general: 1 } });
+  try {
+    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);
+    assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 200);
+  } finally { t.close(); }
+});\n
