@@ -226,3 +226,16 @@ test('state-changing API requests reject cross-site browser origins', async () =
     assert.equal(sameOrigin.json.simulateAi, false);
   } finally { t.close(); }
 });
+
+
+test('public production mode blocks shared demo reset and global outage toggles', async () => {
+  const t = await boot({ env: { NODE_ENV: 'production' } });
+  try {
+    const health = await t.call('GET', '/api/health');
+    assert.equal(health.json.demo.adminControlsEnabled, false);
+    assert.equal((await t.call('POST', '/api/demo/seed')).status, 201);
+    assert.equal((await t.call('DELETE', '/api/demo')).status, 403);
+    assert.equal((await t.call('POST', '/api/demo/simulate', { paypal: true })).status, 403);
+    assert.equal((await t.call('GET', '/api/invoices')).json.length, 8);
+  } finally { t.close(); }
+});
