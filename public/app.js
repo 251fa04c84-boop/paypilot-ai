@@ -45,6 +45,7 @@ async function loadStatus() {
   try {
     const hh = state.health = await api('GET', '/api/health');
     s.append(pill(hh.paypal.configured ? 'ok' : 'warn', hh.paypal.configured ? 'PayPal Sandbox: connected' : 'PayPal Sandbox: not configured'), aiPill(hh.ai), pill('warn', 'Restricted demo · demo data only'));
+    if (!hh.demo.publicMutationsEnabled) s.append(pill('warn', 'Read-only public preview · interactive actions disabled'));
     if (hh.demo.simulateAi) s.append(pill('bad', 'SIMULATED AI outage'));
     if (hh.demo.simulatePaypal) s.append(pill('bad', 'SIMULATED PayPal outage'));
   } catch (_) { s.append(pill('bad', 'Server unreachable')); }
@@ -143,7 +144,7 @@ function proposalCard(p) {
     const orderId = p.orderId || (p.result.approveUrl.match(/token=([A-Za-z0-9-]+)/) || [])[1];
     bar.append(
       h('a', { class: 'btn primary', href: p.result.approveUrl, target: '_blank', rel: 'noopener' }, 'Open PayPal Sandbox checkout'),
-      orderId && h('button', { class: 'btn', onclick: lock('Simulating webhook capture…', async () => {
+      state.health && state.health.demo.adminControlsEnabled && orderId && h('button', { class: 'btn', onclick: lock('Simulating webhook capture…', async () => {
         const sim = await api('POST', '/api/demo/simulate-webhook', { orderId });
         toast(sim.result && sim.result.outcome === 'paid' ? 'Payment capture verified with PayPal!' : 'Webhook simulated.');
         await finish();
@@ -197,9 +198,10 @@ function demoPanel(all) {
       h('li', {}, 'Scenario 5, webhook: simulate an asynchronous PayPal webhook payment confirmation without redirect.'),
       h('li', {}, 'Injection test: Injection Test has hostile text in its notes. The agent treats it as data.')),
     h('div', { class: 'actions' },
-      hasDemo ? h('button', { class: 'danger', onclick: lock('Resetting…', async () => { if (confirm('Remove demo data and load a fresh set?')) { await api('DELETE', '/api/demo'); await api('POST', '/api/demo/seed'); await loadStatus(); await render(); } }) }, 'Reset demo scenarios') : h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'),
-      sim('ai', 'AI'),
-      sim('paypal', 'PayPal'),
+      hasDemo
+        ? (hh.demo.adminControlsEnabled ? h('button', { class: 'danger', onclick: lock('Resetting…', async () => { if (confirm('Remove demo data and load a fresh set?')) { await api('DELETE', '/api/demo'); await api('POST', '/api/demo/seed'); await loadStatus(); await render(); } }) }, 'Reset demo scenarios') : h('span', { class: 'muted small' }, 'Shared demo reset is disabled on this public deployment.'))
+        : h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'),
+      hh.demo.adminControlsEnabled ? [sim('ai', 'AI'), sim('paypal', 'PayPal')] : [],
       h('button', { onclick: lock('Simulating webhook…', async () => {
         const invs = await api('GET', '/api/invoices');
         const target = invs.find((i) => i.status === 'open' && !i.disputed) || invs[0];

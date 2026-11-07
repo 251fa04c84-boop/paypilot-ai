@@ -7,8 +7,14 @@
 PayPilot AI helps small businesses decide what to do about unpaid invoices. It combines deterministic invoice rules, optional Gemini explanations, human approval, PayPal Sandbox checkout, server-side payment verification, and an audit trail.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
-> **Restricted demo:** there is no login or tenant isolation. Use only the included demo data; do not enter real customer or financial information.  
+> **Restricted demo:** there is no login or tenant isolation. Production browser-facing mutations are disabled by default; set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` only when intentionally opening the shared judge workflow. Invoice create/edit/delete/manual settlement remain disabled in production regardless. Verified PayPal capture and signed webhook endpoints remain available. Use only included demo data; do not enter real customer or financial information.  
 > **Storage:** invoice and audit data use a local JSON file. On ephemeral/free hosting, data can reset when the service restarts. This is a hackathon demo, not a production accounting system.
+
+### Public demo mutation switch
+
+- Production defaults to read-only for browser-facing state changes because all visitors otherwise share one database.
+- To enable the interactive judge walkthrough, explicitly set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` in the hosting environment and restart/redeploy. This enables shared demo actions such as drafts, approvals, proposals and demo seeding; it does **not** enable invoice CRUD or demo-admin simulation controls.
+- Keep it unset/false when the app is not being actively demonstrated. This is a temporary judge-demo control, not a substitute for authentication or tenant isolation.
 
 ## Why this is an agent, not just a chatbot
 
@@ -144,7 +150,7 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 ## Known limitations
 
-- No authentication, user accounts or tenant isolation; restricted demo only.
+- No authentication, user accounts or tenant isolation; restricted shared demo only. The planned tenant-isolation architecture and release gates are documented in [docs/TENANT_ISOLATION_PLAN.md](docs/TENANT_ISOLATION_PLAN.md).
 - JSON-file storage is not durable on ephemeral/free hosting and may reset after a restart.
 - Rate-limit counters are in memory.
 - No email/SMS delivery; reminder messages are drafts for the operator to send.
@@ -155,3 +161,8 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+### Reverse-proxy rate-limit identity
+
+The application ignores `X-Forwarded-For` by default because clients can spoof it and bypass IP-based rate limits. Set `TRUST_PROXY=true` only when the deployment proxy is configured to overwrite/sanitize that header before forwarding requests. Do not enable it behind an untrusted proxy. When disabled, requests are grouped by the direct TCP peer address, which may cause shared limits behind a proxy; configure trusted proxy handling deliberately for the hosting environment.
