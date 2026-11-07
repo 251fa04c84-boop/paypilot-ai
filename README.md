@@ -7,8 +7,14 @@
 PayPilot AI helps small businesses decide what to do about unpaid invoices. It combines deterministic invoice rules, optional Gemini explanations, human approval, PayPal Sandbox checkout, server-side payment verification, and an audit trail.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
-> **Restricted demo:** there is no login or tenant isolation. The public production deployment is read/demo-workflow only: creating, editing, deleting and manually settling invoice records are disabled. Use only the included demo data; do not enter real customer or financial information.  
+> **Restricted demo:** there is no login or tenant isolation. Production browser-facing mutations are disabled by default; set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` only when intentionally opening the shared judge workflow. Invoice create/edit/delete/manual settlement remain disabled in production regardless. Verified PayPal capture and signed webhook endpoints remain available. Use only included demo data; do not enter real customer or financial information.  
 > **Storage:** invoice and audit data use a local JSON file. On ephemeral/free hosting, data can reset when the service restarts. This is a hackathon demo, not a production accounting system.
+
+### Public demo mutation switch
+
+- Production defaults to read-only for browser-facing state changes because all visitors otherwise share one database.
+- To enable the interactive judge walkthrough, explicitly set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` in the hosting environment and restart/redeploy. This enables shared demo actions such as drafts, approvals, proposals and demo seeding; it does **not** enable invoice CRUD or demo-admin simulation controls.
+- Keep it unset/false when the app is not being actively demonstrated. This is a temporary judge-demo control, not a substitute for authentication or tenant isolation.
 
 ## Why this is an agent, not just a chatbot
 
