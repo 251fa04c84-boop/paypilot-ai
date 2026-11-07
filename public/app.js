@@ -197,9 +197,10 @@ function demoPanel(all) {
       h('li', {}, 'Scenario 5, webhook: simulate an asynchronous PayPal webhook payment confirmation without redirect.'),
       h('li', {}, 'Injection test: Injection Test has hostile text in its notes. The agent treats it as data.')),
     h('div', { class: 'actions' },
-      hasDemo ? h('button', { class: 'danger', onclick: lock('Resetting…', async () => { if (confirm('Remove demo data and load a fresh set?')) { await api('DELETE', '/api/demo'); await api('POST', '/api/demo/seed'); await loadStatus(); await render(); } }) }, 'Reset demo scenarios') : h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'),
-      sim('ai', 'AI'),
-      sim('paypal', 'PayPal'),
+      hasDemo
+        ? (hh.demo.adminControlsEnabled ? h('button', { class: 'danger', onclick: lock('Resetting…', async () => { if (confirm('Remove demo data and load a fresh set?')) { await api('DELETE', '/api/demo'); await api('POST', '/api/demo/seed'); await loadStatus(); await render(); } }) }, 'Reset demo scenarios') : h('span', { class: 'muted small' }, 'Shared demo reset is disabled on this public deployment.'))
+        : h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'),
+      hh.demo.adminControlsEnabled ? [sim('ai', 'AI'), sim('paypal', 'PayPal')] : [],
       h('button', { onclick: lock('Simulating webhook…', async () => {
         const invs = await api('GET', '/api/invoices');
         const target = invs.find((i) => i.status === 'open' && !i.disputed) || invs[0];
