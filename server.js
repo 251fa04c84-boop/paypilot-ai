@@ -644,14 +644,25 @@ function createApp(opts = {}) {
 
   function readBody(req) {
     return new Promise((resolve, reject) => {
-      let size = 0; const chunks = [];
-      req.on('data', (c) => { size += c.length; if (size > 100000) { reject(new HttpError(413, 'Request too large.')); req.destroy(); } else chunks.push(c); });
+      let size = 0; let tooLarge = false; const chunks = [];
+      req.on('data', (c) => {
+        if (tooLarge) return;
+        size += c.length;
+        if (size > 100000) {
+          tooLarge = true;
+          chunks.length = 0;
+          reject(new HttpError(413, 'Request too large.'));
+          return;
+        }
+        chunks.push(c);
+      });
       req.on('end', () => {
+        if (tooLarge) return;
         if (!chunks.length) return resolve({});
         try { const v = JSON.parse(Buffer.concat(chunks).toString('utf8')); resolve(v && typeof v === 'object' ? v : {}); }
         catch (_) { reject(new HttpError(400, 'Invalid JSON.')); }
       });
-      req.on('error', reject);
+      req.on('error', (e) => { if (!tooLarge) reject(e); });
     });
   }
 

@@ -310,3 +310,14 @@ test('public production mode blocks simulated payment settlement', async () => {
     assert.equal(t.app.db.orders[0].status, 'created');
   } finally { t.close(); }
 });
+
+
+test('oversized JSON bodies receive a controlled 413 response without destroying the connection', async () => {
+  const t = await boot();
+  try {
+    const response = await t.call('POST', '/api/invoices', Object.assign({}, NEW, { notes: 'x'.repeat(110000) }));
+    assert.equal(response.status, 413);
+    assert.match(response.json.error, /too large/i);
+    assert.equal((await t.call('GET', '/api/invoices')).json.length, 0);
+  } finally { t.close(); }
+});
