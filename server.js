@@ -32,6 +32,9 @@ function createApp(opts = {}) {
   const sender = env.SENDER_NAME || 'Accounts team';
   // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
   const demoAdminEnabled = env.ENABLE_DEMO_ADMIN === 'true' || (!isProduction && env.ENABLE_DEMO_ADMIN !== 'false');
+  // Public judge workflows mutate the shared demo database. Require an explicit production opt-in.
+  // Keep verified PayPal callbacks available even when browser-facing demo mutations are disabled.
+  const publicDemoMutationsEnabled = env.ENABLE_PUBLIC_DEMO_MUTATIONS === 'true' || (!isProduction && env.ENABLE_PUBLIC_DEMO_MUTATIONS !== 'false');
   const inflight = new Set();
   const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
@@ -159,7 +162,7 @@ function createApp(opts = {}) {
     routes.push({ method, re, keys, handler });
   };
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled } } }));
+  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     requireMutableDemo();
@@ -715,6 +718,9 @@ function createApp(opts = {}) {
             throw new HttpError(403, 'Request origin does not match this application.');
           }
         }
+      }
+      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
+        throw new HttpError(403, 'Interactive demo actions are disabled on this public deployment.');
       }
       const blocked = checkLimits(req, url.pathname);
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
