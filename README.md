@@ -7,7 +7,7 @@
 PayPilot AI helps small businesses decide what to do about unpaid invoices. It combines deterministic invoice rules, optional Gemini explanations, human approval, PayPal Sandbox checkout, server-side payment verification, and an audit trail.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
-> **Restricted demo:** there is no login or tenant isolation. Use only the included demo data; do not enter real customer or financial information.  
+> **Restricted demo:** there is no login or tenant isolation. The public production deployment is read/demo-workflow only: creating, editing, deleting and manually settling invoice records are disabled. Use only the included demo data; do not enter real customer or financial information.  
 > **Storage:** invoice and audit data use a local JSON file. On ephemeral/free hosting, data can reset when the service restarts. This is a hackathon demo, not a production accounting system.
 
 ## Why this is an agent, not just a chatbot
@@ -144,7 +144,7 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 ## Known limitations
 
-- No authentication, user accounts or tenant isolation; restricted demo only.
+- No authentication, user accounts or tenant isolation; restricted demo only. Production blocks invoice creation, edits, deletion, dispute toggles and manual-paid actions; judges use the seeded scenarios and verified Sandbox checkout.
 - JSON-file storage is not durable on ephemeral/free hosting and may reset after a restart.
 - Rate-limit counters are in memory.
 - No email/SMS delivery; reminder messages are drafts for the operator to send.
