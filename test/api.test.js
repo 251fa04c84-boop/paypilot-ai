@@ -133,10 +133,15 @@ test('PayPal: not approved, unknown order, tampered amount, pending, cancel', as
     assert.equal(t.app.db.orders[0].status, 'created'); // can retry after the buyer approves
     assert.equal((await t.call('POST', '/api/paypal/capture', { orderId: 'FAKE-ORDER-ID' })).status, 404); // never trust ids we did not create
     assert.equal((await t.call('POST', '/api/paypal/capture', { orderId: '../../etc' })).status, 400);
+    const auditBeforeCancel = t.app.db.actions.length;
     const cancel = await t.call('GET', `/paypal/cancel?token=${t.app.db.orders[0].orderId}`);
-    assert.equal(cancel.status, 302); assert.equal(t.app.db.orders[0].status, 'cancelled');
-    assert.equal((await t.call('POST', '/api/paypal/capture', { orderId: t.app.db.orders[0].orderId })).json.outcome, 'cancelled');
+    assert.equal(cancel.status, 302);
+    // A cross-site browser GET must not mutate payment or approval state.
+    assert.equal(t.app.db.orders[0].status, 'created');
     assert.equal(t.app.db.invoices[0].status, 'open');
+    assert.equal(t.app.db.actions.length, auditBeforeCancel);
+    // Capture still requires a server-side PayPal result; this fake buyer has not approved.
+    assert.equal((await t.call('POST', '/api/paypal/capture', { orderId: t.app.db.orders[0].orderId })).status, 409);
   } finally { t.close(); }
   t = await boot({ paypal: fakePayPal({ invoice: () => ({ id: t0(), amount: 1, currency: 'USD' }) }) });
   function t0() { return t.app.db.invoices[0].id; }

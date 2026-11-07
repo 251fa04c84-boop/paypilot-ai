@@ -376,16 +376,10 @@ function createApp(opts = {}) {
     catch (e) { return { status: e.status || 500, html: page('Payment unavailable', esc(e.status ? e.message : 'Could not start the payment.')) }; }
   });
   route('GET', '/paypal/return', ({ query }) => ({ redirect: `/?payment=return&order=${encodeURIComponent(String(query.token || '').replace(/[^A-Za-z0-9-]/g, ''))}` }));
-  route('GET', '/paypal/cancel', ({ query }) => {
-    const rec = db.orders.find((o) => o.orderId === query.token);
-    if (rec && rec.status === 'created') {      rec.status = 'cancelled';
-      const cp = rec.proposalId && db.proposals.find((x) => x.id === rec.proposalId);
-      if (cp && cp.status === 'executed') { cp.status = 'cancelled'; cp.error = 'The buyer cancelled in PayPal. Nothing was paid.'; }
-      addAction(db, { invoiceId: rec.invoiceId, type: 'payment_cancelled', detail: `Buyer cancelled PayPal Sandbox order ${rec.orderId}. Invoice unchanged.` }, iso());
-      store.save();
-    }
-    return { redirect: '/?payment=cancelled' };
-  });
+  // PayPal's browser return is a cross-site top-level GET. Never mutate payment state here:
+  // a GET can be triggered by a third-party page, prefetcher, or link scanner. Only verified
+  // PayPal API/webhook results may change settlement state.
+  route('GET', '/paypal/cancel', () => ({ redirect: '/?payment=cancelled' }));
   route('POST', '/api/demo/seed', () => { seedDemo(); return { status: 201, json: { seeded: true } }; });
   route('DELETE', '/api/demo', () => {
     if (!demoAdminEnabled) throw new HttpError(403, 'Shared demo reset is disabled on the public deployment.');
