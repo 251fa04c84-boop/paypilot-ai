@@ -394,7 +394,7 @@ function createApp(opts = {}) {
     if (inv.disputed) return { status: 409, html: page('Payment unavailable', 'This invoice is under review, so payment is paused.') };
     if (!publicDemoMutationsEnabled) return { status: 403, html: page('Payment unavailable', 'Interactive checkout is disabled on this public preview.') };
     if (!ppNow().configured()) return { status: 503, html: page('Payment unavailable', 'PayPal Sandbox is not configured on this server.') };
-    const content = `<p>Invoice ${esc(inv.number)} · ${esc(money(inv.amount, inv.currency))}</p><form method="post" action="/pay/${esc(inv.id)}/checkout"><button type="submit">Continue to PayPal Sandbox</button></form><p>Payment is not started until you press the button. PayPal Sandbox uses test money only.</p>`;
+    const content = `<p>Invoice ${esc(inv.number)} · ${esc(`${Number(inv.amount).toFixed(2)} ${inv.currency}`)}</p><form method="post" action="/pay/${esc(inv.id)}/checkout"><button type="submit">Continue to PayPal Sandbox</button></form><p>Payment is not started until you press the button. PayPal Sandbox uses test money only.</p>`;
     return { html: page('Continue to payment', content) };
   });
   route('POST', '/pay/:id/checkout', async ({ params }) => {
