@@ -1,6 +1,6 @@
 # PayPilot AI — tenant isolation implementation plan
 
-**Status: not implemented.** The hosted judge demo currently uses one shared JSON database without accounts or tenant boundaries. This document records the required design before code is changed; it is not a claim that the application is multi-tenant or production-ready.
+**Status: foundation in progress; not implemented end-to-end.** The isolated `lib/session.js` module now provides signed opaque cookie primitives, SHA-256 session references, strict TTL validation, duplicate-cookie rejection, and secure cookie serialization. These primitives are covered by `test/session.test.js` but are not yet wired into HTTP request handling or persisted sessions. The hosted judge demo currently uses one shared JSON database without accounts or tenant boundaries. This document records the required design before code is changed; it is not a claim that the application is multi-tenant or production-ready.
 
 ## Why a small cookie patch is not enough
 
