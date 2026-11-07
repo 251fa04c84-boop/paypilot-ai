@@ -77,6 +77,32 @@ test('PayPal rejects oversized responses before parsing them', async () => {
   await assert.rejects(paypal.getOrder('ORDER-123'), (e) => e.code === 'PAYPAL_RESPONSE_TOO_LARGE');
 });
 
+test('PayPal cancels a streaming response when it exceeds the configured size limit', async () => {
+  let cancelled = false;
+  const paypal = createPayPal({
+    clientId: 'sandbox-client', secret: 'sandbox-secret', maxResponseBytes: 1024,
+    fetchImpl: async () => ({
+      status: 200,
+      headers: { get() { return null; } },
+      body: {
+        getReader() {
+          let sent = false;
+          return {
+            async read() {
+              if (sent) return { done: true };
+              sent = true;
+              return { done: false, value: new Uint8Array(2048) };
+            },
+            async cancel() { cancelled = true; },
+          };
+        },
+      },
+    }),
+  });
+  await assert.rejects(paypal.getOrder('ORDER-123'), (e) => e.code === 'PAYPAL_RESPONSE_TOO_LARGE');
+  assert.equal(cancelled, true);
+});
+
 test('PayPal rejects malformed JSON rather than trusting an invalid response', async () => {
   const paypal = createPayPal({
     clientId: 'sandbox-client', secret: 'sandbox-secret',
