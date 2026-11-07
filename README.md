@@ -155,3 +155,8 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+### Reverse-proxy rate-limit identity
+
+The application ignores `X-Forwarded-For` by default because clients can spoof it and bypass IP-based rate limits. Set `TRUST_PROXY=true` only when the deployment proxy is configured to overwrite/sanitize that header before forwarding requests. Do not enable it behind an untrusted proxy. When disabled, requests are grouped by the direct TCP peer address, which may cause shared limits behind a proxy; configure trusted proxy handling deliberately for the hosting environment.
