@@ -50,7 +50,7 @@ function createApp(opts = {}) {
     draftAll: createLimiter({ windowMs: 60000, max: lim.draftAll || 8 }),
     pay: createLimiter({ windowMs: 60000, max: lim.pay || 20 }),
   };
-  const clientIp = (req) => (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress) || 'unknown';
+  // Never trust client-supplied X-Forwarded-For by default: it is trivial to spoof and bypass IP limits.\n  // Enable TRUST_PROXY=true only when the hosting proxy is configured to overwrite this header.\n  const clientIp = (req) => {\n    const forwarded = env.TRUST_PROXY === 'true' ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '';\n    return forwarded || req.socket.remoteAddress || 'unknown';\n  };
   function checkLimits(req, p) {
     const ip = clientIp(req), t = Date.now(), tests = [];
     if (p.startsWith('/api/') || p.startsWith('/pay/') || p.startsWith('/paypal/')) tests.push([L.general, ip]);
