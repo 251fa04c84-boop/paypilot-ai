@@ -111,18 +111,35 @@ test('PayPal rejects malformed JSON rather than trusting an invalid response', a
   await assert.rejects(paypal.getOrder('ORDER-123'), /invalid response/i);
 });
 
-test('PayPal order approval link must be HTTPS', async () => {
+test('PayPal order approval link must use an exact trusted Sandbox hostname', async () => {
   let calls = 0;
   const paypal = createPayPal({
     clientId: 'sandbox-client', secret: 'sandbox-secret',
     fetchImpl: async () => {
       calls += 1;
       if (calls === 1) return response(200, { access_token: 'sandbox-token', expires_in: 300 });
-      return response(201, { id: 'ORDER-123', links: [{ rel: 'approve', href: 'javascript:alert(1)' }] });
+      return response(201, { id: 'ORDER-123', links: [{ rel: 'approve', href: 'https://www.sandbox.paypal.com/checkoutnow?token=ORDER-123' }] });
+    },
+  });
+  const order = await paypal.createOrder({
+    invoice: { id: 'inv1', number: 'INV-1', amount: 10, currency: 'USD' },
+    requestId: 'req-1', returnUrl: 'https://example.test/return', cancelUrl: 'https://example.test/cancel',
+  });
+  assert.equal(new URL(order.approveUrl).hostname, 'www.sandbox.paypal.com');
+});
+
+test('PayPal rejects HTTPS approval links hosted by an untrusted domain', async () => {
+  let calls = 0;
+  const paypal = createPayPal({
+    clientId: 'sandbox-client', secret: 'sandbox-secret',
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) return response(200, { access_token: 'sandbox-token', expires_in: 300 });
+      return response(201, { id: 'ORDER-123', links: [{ rel: 'approve', href: 'https://paypal.com.attacker.example/checkout' }] });
     },
   });
   await assert.rejects(paypal.createOrder({
     invoice: { id: 'inv1', number: 'INV-1', amount: 10, currency: 'USD' },
     requestId: 'req-1', returnUrl: 'https://example.test/return', cancelUrl: 'https://example.test/cancel',
-  }), /valid approval link/i);
+  }), /trusted Sandbox approval link/i);
 });
