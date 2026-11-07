@@ -204,7 +204,7 @@ test('payment-link GET never creates a PayPal order; explicit POST does', async 
     assert.equal(paypal.calls.create, 0);
     const checkout = await t.call('POST', `/pay/${id}/checkout`);
     assert.equal(checkout.status, 302);
-    assert.match(checkout.headers.get('location'), /sandbox\\.paypal\\.test/);
+    assert.ok(checkout.headers.get('location').includes('sandbox.paypal.test'));
     assert.equal(paypal.calls.create, 1);
   } finally { t.close(); }
 });
