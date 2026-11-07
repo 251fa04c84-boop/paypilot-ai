@@ -674,6 +674,24 @@ function createApp(opts = {}) {
         if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname);
         throw new HttpError(404, 'Not found.');
       }
+      // Browser-facing state changes must not be triggerable by a hostile cross-site page.
+      // Requests without Origin remain supported for PayPal webhooks and trusted API clients.
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+        if (fetchSite === 'cross-site') throw new HttpError(403, 'Cross-site requests are not allowed.');
+        const origin = req.headers.origin;
+        if (origin) {
+          let parsedOrigin;
+          try { parsedOrigin = new URL(origin); } catch (_) { throw new HttpError(403, 'Invalid request origin.'); }
+          const requestHost = String(req.headers.host || '').toLowerCase();
+          const originHost = parsedOrigin.host.toLowerCase();
+          const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+          const expectedProtocol = forwardedProto === 'https' ? 'https:' : (req.socket.encrypted ? 'https:' : 'http:');
+          if (originHost !== requestHost || parsedOrigin.protocol !== expectedProtocol || parsedOrigin.username || parsedOrigin.password) {
+            throw new HttpError(403, 'Request origin does not match this application.');
+          }
+        }
+      }
       const blocked = checkLimits(req, url.pathname);
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
