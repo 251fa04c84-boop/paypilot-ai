@@ -392,6 +392,8 @@ function createApp(opts = {}) {
     if (!inv) return { status: 404, html: page('Invoice not found', 'This payment link is not valid.') };
     if (inv.status !== 'open') return { status: 409, html: page('Nothing to pay', `Invoice ${esc(inv.number)} is ${esc(inv.status)}.`) };
     if (inv.disputed) return { status: 409, html: page('Payment unavailable', 'This invoice is under review, so payment is paused.') };
+    if (!publicDemoMutationsEnabled) return { status: 403, html: page('Payment unavailable', 'Interactive checkout is disabled on this public preview.') };
+    if (!ppNow().configured()) return { status: 503, html: page('Payment unavailable', 'PayPal Sandbox is not configured on this server.') };
     const content = `<p>Invoice ${esc(inv.number)} · ${esc(money(inv.amount, inv.currency))}</p><form method="post" action="/pay/${esc(inv.id)}/checkout"><button type="submit">Continue to PayPal Sandbox</button></form><p>Payment is not started until you press the button. PayPal Sandbox uses test money only.</p>`;
     return { html: page('Continue to payment', content) };
   });
