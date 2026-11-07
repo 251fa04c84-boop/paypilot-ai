@@ -175,7 +175,7 @@ function createApp(opts = {}) {
   });
   route('GET', '/api/invoices/:id', ({ params }) => {
     const inv = find(db.invoices, params.id, 'Invoice');
-    return { json: Object.assign(withA(inv), { proposals: db.proposals.filter((p) => p.invoiceId === inv.id).map((p) => view(refreshExpiry(p))).reverse(), drafts: db.drafts.filter((d) => d.invoiceId === inv.id), actions: db.actions.filter((a) => a.invoiceId === inv.id).reverse() }) };
+    return { json: Object.assign(withA(inv), { proposals: db.proposals.filter((p) => p.invoiceId === inv.id).map((p) => view(readExpiry(p))).reverse(), drafts: db.drafts.filter((d) => d.invoiceId === inv.id), actions: db.actions.filter((a) => a.invoiceId === inv.id).reverse() }) };
   });
   route('PUT', '/api/invoices/:id', ({ params, body }) => {
     requireMutableDemo();
@@ -385,10 +385,18 @@ function createApp(opts = {}) {
     store.save();
     return { json: { simulated: true, result: res } };
   });
-  route('GET', '/pay/:id', async ({ params }) => {
+  // A GET payment-link visit must be safe for email scanners and browser prefetchers.
+  // Starting a PayPal order is an explicit same-origin POST, gated like other public mutations.
+  route('GET', '/pay/:id', ({ params }) => {
     const inv = db.invoices.find((i) => i.id === params.id);
     if (!inv) return { status: 404, html: page('Invoice not found', 'This payment link is not valid.') };
-    if (inv.status !== 'open') return { html: page('Nothing to pay', `Invoice ${esc(inv.number)} is ${esc(inv.status)}.`) };
+    if (inv.status !== 'open') return { status: 409, html: page('Nothing to pay', `Invoice ${esc(inv.number)} is ${esc(inv.status)}.`) };
+    if (inv.disputed) return { status: 409, html: page('Payment unavailable', 'This invoice is under review, so payment is paused.') };
+    const content = `<p>Invoice ${esc(inv.number)} · ${esc(money(inv.amount, inv.currency))}</p><form method="post" action="/pay/${esc(inv.id)}/checkout"><button type="submit">Continue to PayPal Sandbox</button></form><p>Payment is not started until you press the button. PayPal Sandbox uses test money only.</p>`;
+    return { html: page('Continue to payment', content) };
+  });
+  route('POST', '/pay/:id/checkout', async ({ params }) => {
+    const inv = find(db.invoices, params.id, 'Invoice');
     try { return { redirect: await startPayment(inv) }; }
     catch (e) { return { status: e.status || 500, html: page('Payment unavailable', esc(e.status ? e.message : 'Could not start the payment.')) }; }
   });
@@ -411,6 +419,13 @@ function createApp(opts = {}) {
 
   // ================= Agent workflow =================
   const view = (p) => { const i = db.invoices.find((x) => x.id === p.invoiceId); return Object.assign({}, p, { invoice: i ? { id: i.id, client: i.client, number: i.number, amount: i.amount, currency: i.currency } : null }); };
+  // Read paths project expiry without mutating state. Persist the transition only on a write path.
+  function readExpiry(p) {
+    if ((p.status === 'pending' || p.status === 'approved') && Date.parse(iso()) > Date.parse(p.expiresAt)) {
+      return Object.assign({}, p, { status: 'expired' });
+    }
+    return p;
+  }
   function refreshExpiry(p) {
     if ((p.status === 'pending' || p.status === 'approved') && Date.parse(iso()) > Date.parse(p.expiresAt)) {
       p.status = 'expired';
@@ -470,7 +485,7 @@ function createApp(opts = {}) {
   });
 
   route('GET', '/api/proposals', ({ query }) => {
-    let list = db.proposals.map((p) => refreshExpiry(p));
+    let list = db.proposals.map(readExpiry);
     if (query.open) list = list.filter((p) => ['pending', 'approved', 'executed'].includes(p.status));
     return { json: list.slice().reverse().slice(0, 50).map(view) };
   });
