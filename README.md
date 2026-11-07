@@ -151,7 +151,6 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 ## Known limitations
 
 - No authentication, user accounts or tenant isolation; restricted shared demo only. The planned tenant-isolation architecture and release gates are documented in [docs/TENANT_ISOLATION_PLAN.md](docs/TENANT_ISOLATION_PLAN.md).
-- No authentication, user accounts or tenant isolation; restricted demo only. Production blocks invoice creation, edits, deletion, dispute toggles and manual-paid actions; judges use the seeded scenarios and verified Sandbox checkout.
 - JSON-file storage is not durable on ephemeral/free hosting and may reset after a restart.
 - Rate-limit counters are in memory.
 - No email/SMS delivery; reminder messages are drafts for the operator to send.
