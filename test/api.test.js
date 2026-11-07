@@ -35,6 +35,8 @@ test('production public demo mutations are read-only unless explicitly enabled; 
   let t = await boot({ env: { NODE_ENV: 'production' } });
   try {
     t.app.seedDemo();
+    const health = await t.call('GET', '/api/health');
+    assert.equal(health.json.demo.publicMutationsEnabled, false);
     assert.equal((await t.call('GET', '/api/invoices')).status, 200);
     assert.equal((await t.call('POST', '/api/assistant/chat', { query: 'summarize overdue invoices' })).status, 403);
     assert.equal((await t.call('POST', '/api/demo/seed', {})).status, 403);
@@ -43,6 +45,8 @@ test('production public demo mutations are read-only unless explicitly enabled; 
 
   t = await boot({ env: { NODE_ENV: 'production', ENABLE_PUBLIC_DEMO_MUTATIONS: 'true' } });
   try {
+    const health = await t.call('GET', '/api/health');
+    assert.equal(health.json.demo.publicMutationsEnabled, true);
     assert.equal((await t.call('POST', '/api/demo/seed', {})).status, 201);
     assert.equal((await t.call('GET', '/api/invoices')).json.length, 8);
   } finally { t.close(); }
