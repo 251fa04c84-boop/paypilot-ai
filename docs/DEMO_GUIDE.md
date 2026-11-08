@@ -3,68 +3,57 @@
 **Hosted app:** https://paypilot-ai-1qw8.onrender.com/  
 **Repository:** https://github.com/251fa04c84-boop/paypilot-ai
 
-This guide is designed for a short, reproducible evaluation. The complete public demo is restricted and uses demo records only.
+This guide describes the currently deployed restricted demo. Use demo records only. The public app has no login or tenant isolation; all visitors share one demo workspace, and the Render free-tier JSON store can reset after a restart.
 
 ## 2-minute judge narrative
 
-**Opening line:** “Small businesses don't just need another reminder generator. They need to know which unpaid invoice to act on, why, and whether the payment actually arrived. PayPilot turns receivables into a controlled recovery workflow.”
-
 | Time | Show | Say |
 |---|---|---|
-| 0:00–0:15 | Mission Control hero and portfolio snapshot | “This is a portfolio recovery agent, not a chatbot. It prioritises the next best action and keeps the operator in control.” |
-| 0:15–0:35 | Run Portfolio Autopilot Sweep; open Approvals | “One pass evaluates the portfolio and stages proposals. It does not silently send messages or move money.” |
-| 0:35–0:55 | Open an overdue invoice; show facts, rules, risks and Gemini interpretation | “The score is a transparent urgency heuristic, not an AI prediction of payment. It uses overdue time, reminder history and near-due timing; invoice amounts do not affect ranking. Financial exposure is grouped by currency. After the 8 November deployment, Render's ephemeral JSON store restarted and the earlier D-1001 Sandbox payment record was not present in the current demo state. That historical test must not be presented as a currently visible paid invoice; do not repeat a payment solely to recreate the screenshot. Gemini explains; deterministic rules decide eligibility.” |
-| 0:55–1:15 | Approve a reminder draft, inspect the exact text and audit entry | “The human approves the exact action. PayPilot prepares a draft; the operator sends it outside the app and confirms that it was sent.” |
-| 1:15–1:40 | Open Acme Studio D-1001 and show its completed PayPal Sandbox buyer approval, capture ID and server-verified paid state | “This is a completed Sandbox buyer flow. An order is not payment: the server matched the completed capture to this invoice, amount and currency.” |
-| 1:40–1:55 | Paid invoice evidence and Activity timeline | “Only verified PayPal evidence marks the invoice paid. The result is recorded for audit.” |
-| 1:55–2:00 | Close on Mission Control | “Prioritise with evidence. Approve with control. Verify the money.” |
+| 0:00–0:15 | Mission Control and Judge Quick Start | “Small businesses need to know which unpaid invoice deserves attention, why, and what action is safe. PayPilot turns receivables into a controlled recovery workflow.” |
+| 0:15–0:35 | Currency-grouped financial snapshot and recovery priority queue | “The portfolio is prioritised with a transparent urgency heuristic. Amounts are context, not a cross-currency scoring input.” |
+| 0:35–0:55 | Open Harbor Dental D-1007 | “A disputed invoice is paused for human review. The agent blocks collection actions rather than pressuring a customer over contested work.” |
+| 0:55–1:15 | Open an overdue invoice such as Northwind Cafe or Bright Labs | “The analysis separates recorded facts, deterministic rules, uncertainty and optional Gemini commentary. Gemini explains; it cannot decide eligibility or payment status.” |
+| 1:15–1:40 | Run Portfolio Autopilot Sweep only if the shared demo is ready; then open Approvals | “The agent stages bounded proposals. A human reviews the exact action. The server revalidates the invoice before execution.” |
+| 1:40–2:00 | AI Assistant quick prompts and Activity export | “The assistant answers from verified application facts, and actions that really occur are recorded in the audit trail. An empty activity feed means no workflow action has yet occurred in this demo session.” |
 
-## Suggested 2-minute walkthrough
+## Recommended judge walkthrough
 
-### 0:00–0:15 — Problem and product
-Explain: small businesses lose time chasing unpaid invoices. PayPilot is an AI-assisted recovery agent that uses fixed rules, explicit human approval and PayPal Sandbox verification—not an unrestricted chatbot.
+1. **Read the portfolio:** review open/overdue counts, paused disputes and currency-grouped exposure.
+2. **Inspect a decision:** open Northwind Cafe or Bright Labs and inspect verified facts, rule conclusions, recommendation, evidence, risks and unknowns.
+3. **Challenge safety:** open Harbor Dental D-1007 and confirm that dispute status blocks collection actions. Open Injection Test D-1008 to inspect hostile notes being treated as untrusted data.
+4. **Try the assistant:** use “Who should I chase today?” or “Show disputed invoices.” Treat Gemini as optional explanation; deterministic rules remain authoritative.
+5. **Optionally test approvals:** run Portfolio Autopilot Sweep, inspect the generated proposal and approve only a test reminder if you intend to change shared demo state. PayPilot creates a draft for the operator; it does not send email or SMS.
+6. **Test payment only if deliberately needed:** a PayPal Sandbox order is not a payment. Only a completed provider capture verified server-side against invoice ID, amount and currency can mark an invoice paid. Use a PayPal Sandbox buyer account only.
 
-### 0:15–0:35 — Portfolio intelligence
-Open Mission Control and run **Portfolio Autopilot Sweep**. Show that invoices are evaluated and proposed actions are queued for review rather than executed silently.
+The visible **Judge Quick Start** card on Mission Control points to the dispute, assistant and approval areas. The more detailed scenario controls remain under “Demo mode: scenarios for judges”.
 
-### 0:35–0:55 — Evidence-based decision
-Open an overdue invoice. Point out verified facts, rule-based conclusions, the recommendation, risks/uncertainty and the separately labelled Gemini interpretation.
+## PayPal Sandbox evidence — important distinction
 
-### 0:55–1:15 — Human approval and guardrails
-Show the proposed action and approval requirement. Explain that the server revalidates the invoice before execution and only allowlisted actions are accepted.
+A buyer-approved PayPal Sandbox checkout and server-side capture verification were successfully completed for Acme Studio D-1001 ($1,200 USD) on 8 November 2026. This was test money, not a real customer payment.
 
-### 1:15–1:40 — Verified PayPal Sandbox payment
-Open the already-paid **Acme Studio D-1001** record. Show the order ID, capture ID, PayPal Sandbox method and server-verified paid state. This is the completed buyer-approved Sandbox flow recorded on 8 November 2026. Do not start another checkout on this already-paid invoice. Never use a live buyer account or real money.
+**That historical capture is not present in the current live demo state.** A Render redeployment restarted the ephemeral JSON store; D-1001 is open again in the current demo dataset. The current portfolio snapshot therefore shows no PayPal-verified paid amount. Do not describe D-1001 as currently paid or show the historical capture as if it were visible in the live app. Do not create another payment merely to recreate a screenshot.
 
-### 1:40–1:55 — Safety after payment
-Reopen the paid invoice. Show that another reminder or checkout is blocked because the invoice is already paid.
+A live PayPal webhook delivery was not independently proven in the latest verification pass. Automated webhook tests use a mocked PayPal signature verifier; describe this accurately.
 
-### 1:55–2:00 — Audit
-Open the invoice timeline or Activity tab to show recorded actions and payment evidence.
+## Demo safety and limitations
 
-## Optional supporting scenarios
-
-- **Dispute:** Harbor Dental demonstrates a human-review recommendation and blocked collection.
-- **Prompt injection:** Injection Test demonstrates that hostile invoice notes are treated as untrusted data.
-- **Outage:** demo outage switches show labelled fallback behaviour.
-- **CSV:** Activity exports the audit log.
-
-## Judge testing notes
-
-- The Render free service may take up to a minute to wake.
-- If demo records are missing, use **Load demo scenarios** in Mission Control.
-- Sandbox checkout requires a PayPal Sandbox buyer account. Use only test credentials issued by PayPal Developer; do not enter a personal/live PayPal account.
-- The demo has no login or tenant isolation. Do not enter real customer information.
-- The application uses JSON-file storage on the free host; records can reset after a restart.
-- Automated tests mock PayPal and Gemini. A successful CI run is not itself a live PayPal integration test.
-- On 8 November 2026, Acme Studio D-1001 ($1,200 USD) completed a buyer-approved PayPal Sandbox order. The server verified the capture against the invoice, amount, currency and completed status; the live invoice and audit trail were independently inspected. This was Sandbox test money, not a production transaction. Automated webhook tests cover signature verification with a mocked PayPal verifier. A live webhook delivery was not independently proven in this verification pass, so do not describe it as a live webhook end-to-end test.
+- PayPal API calls are fixed to Sandbox; never use a live PayPal account or real payment details.
+- The app has no login or tenant isolation. All visitors share the same demo data. Never enter real customer or financial information.
+- The public demo may allow shared workflow mutations while the judge walkthrough is enabled. These actions affect the shared workspace.
+- Invoice create/edit/delete and manual settlement are disabled in production.
+- Reminder messages are drafts; PayPilot does not send email or SMS.
+- Gemini may time out or be rate-limited. The app should show a labelled fallback; deterministic analysis remains available.
+- Render's free-tier JSON file is ephemeral and may reset after restart.
+- Automated tests mock external PayPal and Gemini network calls. A passing CI run is not proof of a live provider transaction or webhook delivery.
+- Do not claim production readiness, tenant isolation, durable storage, improved recovery rates, or hours saved without pilot evidence.
 
 ## Video checklist
 
-- Keep the YouTube video under 3 minutes.
-- Show the real application running on the target device, not only slides.
-- Include the end-to-end Sandbox payment and paid-invoice result.
-- Show one agent decision and one safety guardrail.
-- Use narration/captions in English.
-- Use original narration and screen recording; avoid unlicensed music, logos or third-party copyrighted assets.
-- Make the YouTube video publicly viewable and paste its URL into the Devpost submission.
+- Keep the public YouTube video under 3 minutes.
+- Show the live app and explain the portfolio-level problem in the first 15 seconds.
+- Show one overdue recommendation and one blocked dispute scenario.
+- Show the human approval boundary and explain that reminders are drafts.
+- Show a completed Sandbox capture only if it is actually visible in the recording session; otherwise explain the server verification rule without implying a current paid record.
+- Narrate in English and make the video publicly viewable.
+- Do not expose API keys, passwords, buyer credentials, personal account details or customer data.
+- Link the public repository and hosted demo; do not overstate impact or production readiness.
