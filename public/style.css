@@ -112,3 +112,19 @@ input,select,textarea{background:rgba(5,11,21,.75);border-color:rgba(154,177,207
 @media(max-width:680px){.top{padding:15px 14px 6px}main{padding:8px 14px 28px}.mission-hero{padding:21px 19px;min-height:190px}.hero-mark{flex-basis:86px;height:110px;opacity:.72}.hero-core{width:58px;height:58px;border-radius:19px;font-size:1.55rem}.orbit-one{width:88px;height:60px}.orbit-two{width:105px;height:76px}.command-strip{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.command-stat{padding:12px 13px}.command-stat strong{font-size:1.55rem}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.review-banner{align-items:flex-start;flex-direction:column}.tabs{width:100%;border-radius:15px 15px 0 0;padding-left:6px;padding-right:6px;gap:3px}.tabs button{font-size:.72rem;min-width:0;padding:8px 3px}.section-heading{align-items:flex-start}}
 @media(max-width:390px){.hero-mark{display:none}.mission-hero h2{font-size:1.5rem}.tabs button{font-size:.66rem}}
 @media(prefers-reduced-motion:reduce){button,.btn{transition:none}}
+
+
+/* Final judge-facing responsive polish */
+@media(min-width:1100px){
+  .tiles{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+@media(max-width:480px){
+  .mission-hero{min-height:0;padding:20px 17px}
+  .hero-mark{display:none}
+  .hero-copy{max-width:none}
+  .mission-hero p{font-size:.9rem}
+  .status .pill{font-size:.7rem}
+  .tabs{gap:2px}
+  .tabs button{min-height:48px;font-size:.66rem;padding-left:2px;padding-right:2px}
+  .count{margin-left:3px;padding-left:5px;padding-right:5px}
+}
