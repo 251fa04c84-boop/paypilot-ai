@@ -66,12 +66,25 @@ function invoiceCard(inv, a, onOpen) {
     : a.overdueDays > 0 ? `${a.overdueDays} days overdue`
       : a.dueInDays === 0 ? 'Due today'
         : a.dueInDays === 1 ? 'Due tomorrow' : `Due in ${a.dueInDays} days`;
-  return h('div', { class: 'card' },
-    h('div', { class: 'row' }, h('span', { class: 'name' }, inv.client), h('span', { class: 'badge ' + a.level, title: 'Explainable urgency score; not a payment probability.' }, `${a.level} priority · ${a.score}/100`)),
-    h('div', { class: 'row' }, h('span', { class: 'muted' }, `${inv.number} · ${money(inv.amount, inv.currency)}`), h('span', {}, inv.disputed && h('span', { class: 'badge bad' }, 'DISPUTED'), ' ', inv.demo && h('span', { class: 'badge demo' }, 'DEMO'))),
-    h('p', { class: 'muted' }, timing),
-    h('p', {}, a.recommendation),
-    h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: onOpen }, 'Open')));
+  const score = Math.max(0, Math.min(100, Number(a.score) || 0));
+  const meter = h('div', {
+    class: 'priority-meter',
+    role: 'meter',
+    'aria-label': `Explainable urgency score: ${score} out of 100; not a payment probability.`,
+    'aria-valuemin': 0,
+    'aria-valuemax': 100,
+    'aria-valuenow': score,
+  }, Array.from({ length: 10 }, (_, index) => h('span', {
+    class: index < Math.ceil(score / 10) ? 'filled' : '',
+    'aria-hidden': 'true',
+  })));
+  return h('div', { class: 'card invoice-card invoice-card-' + a.level },
+    h('div', { class: 'row invoice-card-heading' }, h('span', { class: 'name' }, inv.client), h('span', { class: 'badge ' + a.level, title: 'Explainable urgency score; not a payment probability.' }, `${a.level} priority · ${a.score}/100`)),
+    h('div', { class: 'row invoice-card-meta' }, h('span', { class: 'muted' }, `${inv.number} · ${money(inv.amount, inv.currency)}`), h('span', { class: 'invoice-flags' }, inv.disputed && h('span', { class: 'badge bad' }, 'DISPUTED'), ' ', inv.demo && h('span', { class: 'badge demo' }, 'DEMO'))),
+    meter,
+    h('p', { class: 'muted invoice-timing' }, timing),
+    h('p', { class: 'invoice-recommendation' }, a.recommendation),
+    h('div', { class: 'actions invoice-actions' }, h('button', { class: 'primary', onclick: onOpen }, 'Open invoice')));
 }
 const tile = (label, value, cur, sub) => h('div', { class: 'tile' }, h('div', { class: 'muted small' }, label), h('div', { class: 'big' }, `${Number(value).toFixed(2)} ${cur}`), h('div', { class: 'muted small' }, sub));
 function totals(sum) {
