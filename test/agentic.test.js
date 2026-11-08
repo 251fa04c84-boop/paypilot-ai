@@ -194,6 +194,24 @@ test('API: Assistant Chat uses deterministic tools and blocks prompt injection',
   }
 });
 
+test('API: Assistant Chat answers combined overdue and dispute questions', async () => {
+  const { app } = fakeApp();
+  await new Promise((r) => app.server.listen(0, r));
+  try {
+    await request(app.server, 'POST', '/api/demo/seed');
+    const response = await request(app.server, 'POST', '/api/assistant/chat', {
+      query: 'Summarize the overdue portfolio and explain why Harbor Dental must be paused.',
+    });
+    assert.equal(response.status, 200);
+    assert.ok(response.json.text.includes('Top recovery priorities right now'));
+    assert.ok(response.json.text.includes('Harbor Dental'));
+    assert.ok(response.json.text.includes('Collection actions are paused'));
+    assert.equal(response.json.source, 'deterministic-tool:recoveryQueue+disputes');
+  } finally {
+    await new Promise((r) => app.server.close(r));
+  }
+});
+
 test('API: PayPal Webhook verification and simulation captures payment', async () => {
   const { app, store } = fakeApp();
   await new Promise((r) => app.server.listen(0, r));
