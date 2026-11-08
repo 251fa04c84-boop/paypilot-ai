@@ -13,16 +13,19 @@ function fakePayPal(counts) {
     configured: () => true,
     createOrder: async ({ invoice }) => { counts.create++; return { id: `ORDER${counts.create}`, approveUrl: `https://sandbox.paypal.test/a/${counts.create}`, invoice }; },
     captureOrder: async () => { counts.capture++; const inv = counts.inv(); return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'CAP-' + counts.capture, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; },
+    getOrder: async () => { counts.getOrder++; if (counts.orderResponse) return counts.orderResponse(); const inv = counts.inv(); return { status: 'APPROVED', purchase_units: [{ reference_id: inv.id }] }; },
+    verifyWebhookSignature: async () => true,
   };
 }
 async function boot({ aiFetch, env = {} } = {}) {
   clock = new Date('2026-03-10T12:00:00Z');
-  const counts = { create: 0, capture: 0, inv: () => app.db.invoices[0] };
+  const counts = { create: 0, capture: 0, getOrder: 0, orderResponse: null, inv: () => app.db.invoices[0] };
   const app = createApp({ env: Object.assign({ APP_BASE_URL: 'http://t.local' }, env), store: createStore(null), paypal: fakePayPal(counts), aiFetch, backoffMs: 0, now: () => clock });
   await new Promise((r) => app.server.listen(0, r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
-  const call = async (method, path, body) => {
-    const res = await fetch(base + path, { method, redirect: 'manual', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const call = async (method, path, body, extraHeaders = {}) => {
+    const headers = Object.assign(body ? { 'Content-Type': 'application/json' } : {}, extraHeaders);
+    const res = await fetch(base + path, { method, redirect: 'manual', headers, body: body ? JSON.stringify(body) : undefined });
     let json = null; try { json = await res.json(); } catch (_) {}
     return { status: res.status, json };
   };
@@ -149,6 +152,73 @@ test('revalidation at execution: a changed invoice, a dispute or a payment cance
     assert.equal((await t.call('POST', `/api/proposals/${pc.id}/execute`)).status, 409);
   } finally { t.close(); }
 });
+test('an existing checkout is not captured after its invoice becomes disputed', async () => {
+  const t = await boot();
+  try {
+    const inv = await t.mk();
+    const proposal = (await t.call('POST', `/api/invoices/${inv.id}/proposals`, { action: 'start_checkout' })).json;
+    await t.call('POST', `/api/proposals/${proposal.id}/decision`, { decision: 'approve' });
+    await t.call('POST', `/api/proposals/${proposal.id}/execute`);
+    const orderId = t.app.db.orders[0].orderId;
+    await t.call('POST', `/api/invoices/${inv.id}/dispute`, { disputed: true, note: 'Client disputes the work.' });
+    const held = await t.call('POST', '/api/paypal/capture', { orderId });
+    assert.equal(held.status, 409);
+    assert.equal(t.counts.capture, 0);
+    assert.equal(t.counts.getOrder, 1);
+    assert.equal(t.app.db.invoices[0].status, 'open');
+    assert.ok((await t.types(inv.id)).includes('capture_blocked_dispute'));
+  } finally { t.close(); }
+});
+
+test('PayPal buyer-approved webhook is held instead of auto-captured for a disputed invoice', async () => {
+  const t = await boot({ env: { PAYPAL_WEBHOOK_ID: 'webhook-test' } });
+  try {
+    const inv = await t.mk();
+    const proposal = (await t.call('POST', `/api/invoices/${inv.id}/proposals`, { action: 'start_checkout' })).json;
+    await t.call('POST', `/api/proposals/${proposal.id}/decision`, { decision: 'approve' });
+    await t.call('POST', `/api/proposals/${proposal.id}/execute`);
+    const orderId = t.app.db.orders[0].orderId;
+    await t.call('POST', `/api/invoices/${inv.id}/dispute`, { disputed: true, note: 'Client disputes the work.' });
+    const result = await t.call('POST', '/api/paypal/webhook', {
+      id: 'WH-DISPUTE-1', event_type: 'CHECKOUT.ORDER.APPROVED', resource: { id: orderId },
+    }, {
+      'paypal-auth-algo': 'SHA256withRSA',
+      'paypal-cert-url': 'https://api-m.sandbox.paypal.com/cert/test',
+      'paypal-transmission-id': 'transmission-1',
+      'paypal-transmission-sig': 'signature',
+      'paypal-transmission-time': '2026-03-10T12:00:00Z',
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.json.held, true);
+    assert.equal(t.counts.capture, 0);
+    assert.equal(t.counts.getOrder, 0);
+    assert.ok((await t.types(inv.id)).includes('capture_held'));
+  } finally { t.close(); }
+});
+
+test('a capture already completed at PayPal during a dispute is verified and flagged for manual review', async () => {
+  const t = await boot();
+  try {
+    const inv = await t.mk();
+    const proposal = (await t.call('POST', `/api/invoices/${inv.id}/proposals`, { action: 'start_checkout' })).json;
+    await t.call('POST', `/api/proposals/${proposal.id}/decision`, { decision: 'approve' });
+    await t.call('POST', `/api/proposals/${proposal.id}/execute`);
+    const orderId = t.app.db.orders[0].orderId;
+    await t.call('POST', `/api/invoices/${inv.id}/dispute`, { disputed: true, note: 'Client disputes the work.' });
+    t.counts.orderResponse = () => {
+      const current = t.app.db.invoices[0];
+      return { status: 'COMPLETED', purchase_units: [{ reference_id: current.id, payments: { captures: [{ id: 'CAP-EXTERNAL', status: 'COMPLETED', amount: { value: current.amount.toFixed(2), currency_code: current.currency } }] } }] };
+    };
+    const result = await t.call('POST', '/api/paypal/capture', { orderId });
+    assert.equal(result.status, 200);
+    assert.equal(result.json.outcome, 'paid_disputed');
+    assert.equal(t.app.db.invoices[0].status, 'paid');
+    assert.equal(t.app.db.invoices[0].disputed, true);
+    assert.equal(t.app.db.invoices[0].paymentRef, 'CAP-EXTERNAL');
+    assert.ok((await t.types(inv.id)).includes('payment_captured_during_dispute'));
+  } finally { t.close(); }
+});
+
 test('checkout workflow: approval -> Sandbox order -> verified capture -> invoice paid -> later attempts blocked with evidence', async () => {
   const t = await boot();
   try {
