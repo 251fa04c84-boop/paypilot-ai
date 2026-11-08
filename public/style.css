@@ -272,3 +272,6 @@ button:focus-visible,.btn:focus-visible{outline:2px solid var(--accent-cyan);out
 
 /* Judge-facing onboarding: visible on first load, compact on phones, and action labels remain clear. */
 .judge-quickstart{margin:14px 0 18px}.judge-quickstart h3{margin:2px 0 0;font-size:1rem}.judge-steps{margin:10px 0 4px;padding-left:22px}.judge-steps li{padding:4px 0;color:var(--muted)}.judge-steps strong{color:var(--ink)}.judge-quickstart .actions{margin-top:12px}.judge-quickstart .muted.small{margin:10px 0 0}
+
+/* Expandable evidence keeps the urgency heuristic inspectable without cluttering the queue. */
+.score-explain{margin-top:8px;border-top:1px solid var(--line);padding-top:8px}.score-explain summary{color:var(--cyan);font-size:.84rem;font-weight:650;cursor:pointer}.score-explain .list{margin:8px 0 2px;padding-left:20px}.score-explain .list li{margin:4px 0;color:var(--muted);font-size:.82rem}
