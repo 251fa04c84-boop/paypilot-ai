@@ -183,6 +183,9 @@ function createApp(opts = {}) {
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.status === 'paid') throw new HttpError(409, 'Paid invoices cannot be edited.');
     const upd = cleanInvoice(body, inv);
+    const changesPaymentTerms = upd.amount !== inv.amount || upd.currency !== inv.currency;
+    const pendingOrder = db.orders.find((o) => o.invoiceId === inv.id && o.status === 'created');
+    if (changesPaymentTerms && pendingOrder) throw new HttpError(409, 'This invoice has an open PayPal Sandbox checkout. Do not change its amount or currency until that checkout is completed or expires.');
     const beforeHash = snapshotHash(inv);
     if (body.status === 'void' || body.status === 'open') upd.status = body.status;
     Object.assign(inv, upd);
