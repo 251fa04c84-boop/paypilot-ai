@@ -75,8 +75,9 @@ test('raw amounts in different currencies do not change the urgency score', () =
   const usd = P.assess(inv({ amount: 100, currency: 'USD', dueDate: '2026-02-26' }), '2026-03-10');
   const inr = P.assess(inv({ amount: 100000, currency: 'INR', dueDate: '2026-02-26' }), '2026-03-10');
   assert.equal(usd.score, inr.score);
-  assert.deepEqual(usd.reasons.filter((x) => /excluded from the urgency score/.test(x)), inr.reasons.filter((x) => /excluded from the urgency score/.test(x)));
+  assert.equal(usd.reasons.some((x) => /excluded from the urgency score/.test(x)), true);
+  assert.equal(inr.reasons.some((x) => /excluded from the urgency score/.test(x)), true);
 });
-test('a large invoice 12 days overdue is not rated low', () => {
-  assert.notEqual(P.assess(inv({ amount: 2800, dueDate: '2026-02-26' }), '2026-03-10').level, 'low');
+test('a 12-day overdue invoice is medium urgency regardless of amount', () => {
+  assert.equal(P.assess(inv({ amount: 2800, dueDate: '2026-02-26' }), '2026-03-10').level, 'medium');
 });
