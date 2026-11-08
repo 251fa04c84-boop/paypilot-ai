@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { createStore, addAction, newId, closeDrafts, closeProposals } = require('./lib/store');
 const P = require('./lib/priority');
-const { applyCapture } = require('./lib/payments');
+const { applyCapture, verifyCapture } = require('./lib/payments');
 const { createPayPal } = require('./lib/paypal');
 const { generateDraft, generateText } = require('./lib/ai');
 const { ACTIONS, APPROVAL_TTL_MS, evaluate, plan, snapshotHash, buildInterpretationPrompt, validateInterpretation, portfolioTriage, processAssistantQuery } = require('./lib/agent');
@@ -107,9 +107,10 @@ function createApp(opts = {}) {
   function settleProposal(rec, result) {
     const p = rec.proposalId && db.proposals.find((x) => x.id === rec.proposalId);
     if (!p) return;
-    if (result.outcome === 'paid') {
+    if (result.outcome === 'paid' || result.outcome === 'paid_disputed') {
       p.status = 'verified'; p.verifiedAt = iso(); p.captureId = rec.captureId; p.error = null;
-      addAction(db, { invoiceId: p.invoiceId, type: 'result_verified', detail: `Verified with PayPal: capture ${rec.captureId}. The outcome of "${p.title}" is confirmed by the payment service, not by the AI.`, proposalId: p.id }, iso());
+      const disputeNote = result.outcome === 'paid_disputed' ? ' The capture had already completed while the invoice was disputed; manual dispute/refund review is required.' : '';
+      addAction(db, { invoiceId: p.invoiceId, type: 'result_verified', detail: `Verified with PayPal: capture ${rec.captureId}. The outcome of "${p.title}" is confirmed by the payment service, not by the AI.${disputeNote}`, proposalId: p.id }, iso());
     } else if (result.outcome === 'failed' || result.outcome === 'duplicate_payment') {
       p.status = 'failed'; p.error = result.message;
       addAction(db, { invoiceId: p.invoiceId, type: 'verification_failed', detail: `Verification failed for "${p.title}": ${result.message}`, proposalId: p.id }, iso());
@@ -126,9 +127,27 @@ function createApp(opts = {}) {
     if (inflight.has(orderId)) throw new HttpError(409, 'This payment is already being processed.');
     inflight.add(orderId);
     try {
+      const invoice = db.invoices.find((i) => i.id === rec.invoiceId);
+      if (!invoice) throw new HttpError(409, 'The invoice no longer exists. No new capture was attempted.');
       let order;
-      try { order = await ppNow().captureOrder(orderId); }
-      catch (e) { if (e.code === 'NOT_APPROVED') throw new HttpError(409, e.message); throw new HttpError(502, e.message); }
+      const mayInitiateCapture = invoice.status === 'open' && !invoice.disputed;
+      if (mayInitiateCapture) {
+        try { order = await ppNow().captureOrder(orderId); }
+        catch (e) { if (e.code === 'NOT_APPROVED') throw new HttpError(409, e.message); throw new HttpError(502, e.message); }
+      } else {
+        // Never initiate a new capture for a paid, void or disputed invoice. If PayPal
+        // already completed it externally, read the order and verify the evidence instead.
+        if (typeof ppNow().getOrder !== 'function') throw new HttpError(409, 'Invoice state blocks capture. No new capture was attempted.');
+        try { order = await ppNow().getOrder(orderId); }
+        catch (_) { throw new HttpError(502, 'Could not verify the existing PayPal order. No new capture was attempted.'); }
+        const verification = verifyCapture(order, invoice);
+        if (!verification.ok && !verification.pending) {
+          const reason = invoice.disputed ? 'The invoice is disputed' : 'The invoice is ' + invoice.status;
+          addAction(db, { invoiceId: invoice.id, type: invoice.disputed ? 'capture_blocked_dispute' : 'capture_blocked_invoice_state', detail: reason + '. PayPilot did not initiate a new PayPal capture for order ' + orderId + '.' }, iso());
+          store.save();
+          throw new HttpError(409, reason + '. No new capture was attempted.');
+        }
+      }
       const result = applyCapture(db, rec, order, now());
       settleProposal(rec, result);
       store.save();
@@ -333,6 +352,14 @@ function createApp(opts = {}) {
         orderId = resource.supplementary_data.related_ids.order_id || orderId;
       }
       const rec = db.orders.find((o) => o.orderId === orderId);
+      const linkedInvoice = rec && db.invoices.find((i) => i.id === rec.invoiceId);
+      if (event === 'CHECKOUT.ORDER.APPROVED' && (!linkedInvoice || linkedInvoice.status !== 'open' || linkedInvoice.disputed)) {
+        const reason = !linkedInvoice ? 'invoice missing' : linkedInvoice.disputed ? 'invoice disputed' : 'invoice ' + linkedInvoice.status;
+        if (linkedInvoice) addAction(db, { invoiceId: linkedInvoice.id, type: 'capture_held', detail: 'PayPal buyer approval received for order ' + orderId + ', but automatic capture was held because the ' + reason + '. No new capture was initiated.' }, iso());
+        db.processedWebhookEvents.push({ id: eventId, at: iso() });
+        store.save();
+        return { json: { received: true, held: true, reason, eventId } };
+      }
       if (!rec) {
         db.processedWebhookEvents.push({ id: eventId, at: iso() });
         store.save();
