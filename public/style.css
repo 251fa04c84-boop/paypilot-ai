@@ -221,3 +221,51 @@ button:focus-visible,.btn:focus-visible{outline:2px solid var(--accent-cyan);out
   .top:after,.hero-core,.hero-orbit,.card,.command-stat,.autopilot-panel,.review-banner,.command-stat:after{animation:none!important}
   .card,button,.btn{transition:none!important}
 }
+
+
+/* Final usability pass: visible urgency, clearer invoice hierarchy, compact mobile metrics */
+.invoice-card{
+  position:relative;overflow:hidden;padding:17px 19px 16px;
+  border-color:rgba(157,185,218,.19);
+  background:linear-gradient(118deg,rgba(16,29,47,.98),rgba(11,20,34,.98) 72%,rgba(17,25,48,.96));
+}
+.invoice-card:before{
+  content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 5px 5px 0;
+  background:linear-gradient(180deg,var(--accent-cyan),var(--accent));
+}
+.invoice-card-high:before{background:linear-gradient(180deg,#fb7185,#f59e0b)}
+.invoice-card-medium:before{background:linear-gradient(180deg,#fbbf24,#f59e0b)}
+.invoice-card-low:before{background:linear-gradient(180deg,#50e0df,#34d399)}
+.invoice-card .name{font-size:1.02rem;letter-spacing:-.015em}
+.invoice-card-meta{align-items:center;margin-top:3px}
+.invoice-card-meta .muted{font-size:.9rem;font-variant-numeric:tabular-nums}
+.invoice-flags{display:flex;gap:6px;align-items:center}
+.priority-meter{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px;max-width:280px;margin:12px 0 9px}
+.priority-meter span{height:5px;border-radius:99px;background:rgba(157,185,218,.13)}
+.invoice-card-high .priority-meter span.filled{background:#fb7185;box-shadow:0 0 10px rgba(251,113,133,.24)}
+.invoice-card-medium .priority-meter span.filled{background:#fbbf24;box-shadow:0 0 10px rgba(251,191,36,.18)}
+.invoice-card-low .priority-meter span.filled{background:#50e0df;box-shadow:0 0 10px rgba(80,224,223,.18)}
+.invoice-timing{margin:7px 0 4px;font-size:.91rem!important;color:#c0cde0}
+.invoice-recommendation{margin:5px 0 2px;max-width:900px;line-height:1.55;color:#e1e9f5}
+.invoice-actions{margin-top:12px}
+.invoice-actions button{min-width:116px}
+.small{font-size:.86rem}
+.badge{font-size:.75rem}
+@media(max-width:760px){
+  .command-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .command-stat{min-width:0}
+}
+@media(max-width:480px){
+  .invoice-card{padding:15px 14px 14px}
+  .invoice-card-heading{align-items:flex-start;gap:8px}
+  .invoice-card-heading .name{min-width:0;overflow-wrap:anywhere}
+  .invoice-card-meta{align-items:flex-start;flex-direction:column;gap:7px}
+  .invoice-flags{flex-wrap:wrap}
+  .priority-meter{max-width:none;margin:10px 0 8px}
+  .invoice-recommendation{font-size:.94rem}
+  .invoice-actions button{width:100%}
+  .command-stat strong{font-size:1.5rem}
+}
+@media(prefers-reduced-motion:reduce){
+  .invoice-card{transition:none!important}
+}
