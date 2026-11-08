@@ -11,6 +11,14 @@ test('date maths: overdue only after the due date', () => {
   assert.equal(P.assess(inv({ dueDate: '2026-02-28' }), '2026-03-01').overdueDays, 1);
   assert.equal(P.assess(inv({ dueDate: '2028-02-28' }), '2028-03-01').overdueDays, 2); // leap year
 });
+test('assessment exposes due-in days for consistent relative timing labels', () => {
+  assert.equal(P.assess(inv({ dueDate: '2026-03-10' }), '2026-03-10').dueInDays, 0);
+  assert.equal(P.assess(inv({ dueDate: '2026-03-11' }), '2026-03-10').dueInDays, 1);
+  assert.equal(P.assess(inv({ dueDate: '2026-03-12' }), '2026-03-10').dueInDays, 2);
+  const overdue = P.assess(inv({ dueDate: '2026-03-09' }), '2026-03-10');
+  assert.equal(overdue.dueInDays, -1);
+  assert.equal(overdue.overdueDays, 1);
+});
 test('parseDate rejects impossible dates', () => {
   assert.equal(P.parseDate('2026-02-30'), null);
   assert.equal(P.parseDate('2026-13-01'), null);
