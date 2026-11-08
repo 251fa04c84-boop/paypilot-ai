@@ -13,7 +13,7 @@ This guide is designed for a short, reproducible evaluation. The complete public
 |---|---|---|
 | 0:00–0:15 | Mission Control hero and portfolio snapshot | “This is a portfolio recovery agent, not a chatbot. It prioritises the next best action and keeps the operator in control.” |
 | 0:15–0:35 | Run Portfolio Autopilot Sweep; open Approvals | “One pass evaluates the portfolio and stages proposals. It does not silently send messages or move money.” |
-| 0:35–0:55 | Open an overdue invoice; show facts, rules, risks and Gemini interpretation | “The score is a transparent urgency heuristic, not an AI prediction of payment. Gemini explains; deterministic rules decide eligibility.” |
+| 0:35–0:55 | Open an overdue invoice; show facts, rules, risks and Gemini interpretation | “The score is a transparent urgency heuristic, not an AI prediction of payment. It uses overdue time, reminder history and near-due timing; invoice amounts do not affect ranking. Financial exposure is grouped by currency. Gemini explains; deterministic rules decide eligibility.” |
 | 0:55–1:15 | Approve a reminder draft, inspect the exact text and audit entry | “The human approves the exact action. PayPilot prepares a draft; the operator sends it outside the app and confirms that it was sent.” |
 | 1:15–1:40 | Open Acme Studio D-1001 and show its completed PayPal Sandbox buyer approval, capture ID and server-verified paid state | “This is a completed Sandbox buyer flow. An order is not payment: the server matched the completed capture to this invoice, amount and currency.” |
 | 1:40–1:55 | Paid invoice evidence and Activity timeline | “Only verified PayPal evidence marks the invoice paid. The result is recorded for audit.” |
