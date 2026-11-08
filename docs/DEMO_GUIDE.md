@@ -15,7 +15,7 @@ This guide is designed for a short, reproducible evaluation. The complete public
 | 0:15–0:35 | Run Portfolio Autopilot Sweep; open Approvals | “One pass evaluates the portfolio and stages proposals. It does not silently send messages or move money.” |
 | 0:35–0:55 | Open an overdue invoice; show facts, rules, risks and Gemini interpretation | “The score is a transparent urgency heuristic, not an AI prediction of payment. Gemini explains; deterministic rules decide eligibility.” |
 | 0:55–1:15 | Approve a reminder draft, inspect the exact text and audit entry | “The human approves the exact action. PayPilot prepares a draft; the operator sends it outside the app and confirms that it was sent.” |
-| 1:15–1:40 | Start Sandbox checkout, approve with a Sandbox buyer, return to PayPilot | “Creating an order is not payment. The server checks the capture against invoice, amount, currency and completed status.” |
+| 1:15–1:40 | Open Acme Studio D-1001 and show its completed PayPal Sandbox buyer approval, capture ID and server-verified paid state | “This is a completed Sandbox buyer flow. An order is not payment: the server matched the completed capture to this invoice, amount and currency.” |
 | 1:40–1:55 | Paid invoice evidence and Activity timeline | “Only verified PayPal evidence marks the invoice paid. The result is recorded for audit.” |
 | 1:55–2:00 | Close on Mission Control | “Prioritise with evidence. Approve with control. Verify the money.” |
 
@@ -33,8 +33,8 @@ Open an overdue invoice. Point out verified facts, rule-based conclusions, the r
 ### 0:55–1:15 — Human approval and guardrails
 Show the proposed action and approval requirement. Explain that the server revalidates the invoice before execution and only allowlisted actions are accepted.
 
-### 1:15–1:40 — PayPal Sandbox payment
-Create/approve a Sandbox checkout and complete it with a Sandbox buyer account. Show the server-verified capture and invoice status update. Never use a live buyer account or real money.
+### 1:15–1:40 — Verified PayPal Sandbox payment
+Open the already-paid **Acme Studio D-1001** record. Show the order ID, capture ID, PayPal Sandbox method and server-verified paid state. This is the completed buyer-approved Sandbox flow recorded on 8 November 2026. Do not start another checkout on this already-paid invoice. Never use a live buyer account or real money.
 
 ### 1:40–1:55 — Safety after payment
 Reopen the paid invoice. Show that another reminder or checkout is blocked because the invoice is already paid.
@@ -57,7 +57,7 @@ Open the invoice timeline or Activity tab to show recorded actions and payment e
 - The demo has no login or tenant isolation. Do not enter real customer information.
 - The application uses JSON-file storage on the free host; records can reset after a restart.
 - Automated tests mock PayPal and Gemini. A successful CI run is not itself a live PayPal integration test.
-- The maintainer reports a successful Sandbox payment and webhook end-to-end check on 4 November 2026. The automated webhook tests independently cover signature-verification logic using a mocked verifier.
+- On 8 November 2026, Acme Studio D-1001 ($1,200 USD) completed a buyer-approved PayPal Sandbox order. The server verified the capture against the invoice, amount, currency and completed status; the live invoice and audit trail were independently inspected. This was Sandbox test money, not a production transaction. Automated webhook tests cover signature verification with a mocked PayPal verifier. A live webhook delivery was not independently proven in this verification pass, so do not describe it as a live webhook end-to-end test.
 
 ## Video checklist
 
