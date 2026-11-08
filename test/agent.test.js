@@ -219,6 +219,41 @@ test('a capture already completed at PayPal during a dispute is verified and fla
   } finally { t.close(); }
 });
 
+test('a verified PayPal capture-completed webhook records a payment while preserving an existing dispute', async () => {
+  const t = await boot({ env: { PAYPAL_WEBHOOK_ID: 'webhook-test' } });
+  try {
+    const inv = await t.mk();
+    const proposal = (await t.call('POST', `/api/invoices/${inv.id}/proposals`, { action: 'start_checkout' })).json;
+    await t.call('POST', `/api/proposals/${proposal.id}/decision`, { decision: 'approve' });
+    await t.call('POST', `/api/proposals/${proposal.id}/execute`);
+    const orderId = t.app.db.orders[0].orderId;
+    await t.call('POST', `/api/invoices/${inv.id}/dispute`, { disputed: true, note: 'Client disputes the work.' });
+    t.counts.orderResponse = () => {
+      const current = t.app.db.invoices[0];
+      return { status: 'COMPLETED', purchase_units: [{ reference_id: current.id, payments: { captures: [{ id: 'CAP-WEBHOOK', status: 'COMPLETED', amount: { value: current.amount.toFixed(2), currency_code: current.currency } }] } }] };
+    };
+    const result = await t.call('POST', '/api/paypal/webhook', {
+      id: 'WH-CAPTURE-DISPUTE-1',
+      event_type: 'PAYMENT.CAPTURE.COMPLETED',
+      resource: { id: 'CAP-WEBHOOK', supplementary_data: { related_ids: { order_id: orderId } } },
+    }, {
+      'paypal-auth-algo': 'SHA256withRSA',
+      'paypal-cert-url': 'https://api-m.sandbox.paypal.com/cert/test',
+      'paypal-transmission-id': 'transmission-capture-1',
+      'paypal-transmission-sig': 'signature',
+      'paypal-transmission-time': '2026-03-10T12:00:00Z',
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.json.captureResult.outcome, 'paid_disputed');
+    assert.equal(t.counts.capture, 0);
+    assert.equal(t.counts.getOrder, 1);
+    assert.equal(t.app.db.invoices[0].status, 'paid');
+    assert.equal(t.app.db.invoices[0].disputed, true);
+    assert.equal(t.app.db.invoices[0].paymentRef, 'CAP-WEBHOOK');
+    assert.ok((await t.types(inv.id)).includes('payment_captured_during_dispute'));
+  } finally { t.close(); }
+});
+
 test('checkout workflow: approval -> Sandbox order -> verified capture -> invoice paid -> later attempts blocked with evidence', async () => {
   const t = await boot();
   try {
