@@ -196,6 +196,17 @@ async function viewMission() {
       h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Overdue invoices'), h('strong', {}, String(overdueCount)), h('span', { class: 'stat-note' }, 'Past their due date')),
       h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Awaiting review'), h('strong', {}, String(waiting.length)), h('span', { class: 'stat-note' }, 'Human decision required')),
       h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Paused disputes'), h('strong', {}, String(disputedCount)), h('span', { class: 'stat-note' }, 'Collection safely held'))));
+  main.append(h('section', { class: 'judge-quickstart card glow' },
+    h('div', { class: 'row' }, h('div', {}, h('div', { class: 'eyebrow' }, 'JUDGE QUICK START'), h('h3', {}, 'Evaluate the complete recovery workflow')), h('span', { class: 'badge cyan' }, '3-minute tour')),
+    h('ol', { class: 'list judge-steps' },
+      h('li', {}, h('strong', {}, 'Start with portfolio evidence. '), 'Compare the currency-grouped exposure with the urgency queue. Scores are explainable heuristics, not payment predictions.'),
+      h('li', {}, h('strong', {}, 'Challenge the agent. '), 'Inspect a disputed invoice and an overdue invoice. Separate recorded facts, fixed rules, uncertainty and optional Gemini commentary.'),
+      h('li', {}, h('strong', {}, 'Test controlled autonomy. '), 'Optionally run the portfolio sweep, inspect the exact approval, and verify that no action executes without human approval. Sandbox checkout is test money only.')),
+    h('div', { class: 'actions' },
+      h('button', { class: 'btn', onclick: () => { const target = all.find((i) => i.client === 'Harbor Dental' || i.number === 'D-1007'); if (target) openDetail(target.id); else switchTab('invoices'); } }, 'Inspect dispute scenario'),
+      h('button', { class: 'btn', onclick: () => switchTab('assistant') }, 'Try AI assistant'),
+      h('button', { class: 'btn', onclick: () => switchTab('approvals') }, 'Open approvals')),
+    h('p', { class: 'muted small' }, 'Demo records are shared and may reset. Do not enter real customer data. Running a sweep changes the shared demo state; do it only when you want to test the workflow.')));
   if (waiting.length) main.append(h('div', { class: 'review-banner' },
     h('div', {}, h('strong', {}, `${waiting.length} decision${waiting.length === 1 ? '' : 's'} need your attention`), h('p', {}, 'Nothing in this queue executes without your approval.')),
     h('button', { class: 'primary', onclick: () => switchTab('approvals') }, 'Review approvals')));
