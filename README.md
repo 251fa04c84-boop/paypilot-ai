@@ -96,7 +96,7 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 | Real PayPal webhook delivery | Maintainer reports completing an end-to-end Sandbox webhook check on 4 November 2026. The repository's automated webhook tests still use a mocked PayPal signature-verification response; those tests do not independently prove live webhook delivery. |
 | Webhook signature verification, missing configuration/headers, replay handling and retry behaviour | Automated tests with a mocked verifier. |
 | Payment validation and agent safety rules | Automated tests with mocked PayPal/Gemini services. |
-| Current CI | GitHub Actions test workflow passed on the latest main commit at the time this README was updated. |
+| Current CI | 109/109 tests passed on main commit `3bec43b` (8 Nov 2026); later documentation-only benchmark commit `366213a` also passed CI. |
 | Durable database, authentication and tenant isolation | Not implemented. |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
@@ -151,7 +151,7 @@ See [.env.example](.env.example). Configure values only in your local environmen
 
 ## Test coverage
 
-`npm test` covers scoring and dates; payment verification (including amount, currency, invoice association, pending and duplicate cases); portfolio sweeps; batch decisions; assistant tool calling; webhook processing; audit exports; approvals, rejection, expiry, revalidation, idempotency and concurrency; disputed/paid blocking; prompt injection; AI failure, timeout and fallback; rate limiting; and security headers.
+`npm test` covers scoring and dates; payment verification (including amount, currency, invoice association, pending and duplicate cases); portfolio sweeps; batch decisions; assistant tool calling; webhook processing; audit exports; approvals, rejection, expiry, revalidation, idempotency and concurrency; disputed/paid blocking; prompt injection; AI failure, timeout and fallback; rate limiting; and security headers; structured untrusted-data prompt handling, 120-word AI draft limits, unsupported legal/penalty wording rejection, Gemini model failover and labelled fallback.
 
 **Important test boundary:** PayPal and Gemini network calls are mocked in the automated suite. Live Sandbox checkout/webhook checks are separate manual integration tests.
 
