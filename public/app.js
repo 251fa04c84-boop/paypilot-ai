@@ -161,7 +161,8 @@ async function viewMission() {
   const [q, all, open] = await Promise.all([api('GET', '/api/recovery'), api('GET', '/api/invoices'), api('GET', '/api/proposals?open=1')]);
   const sum = all.length ? await api('GET', '/api/summary') : [];
   const waiting = open.filter((p) => p.status === 'pending' || p.status === 'approved');
-  const overdueCount = q.filter((x) => x.assessment.overdueDays > 0).length;
+  // Count every overdue open invoice, including disputed ones; disputes are excluded from the active queue but remain part of total exposure.
+  const overdueCount = sum.reduce((total, currency) => total + currency.overdueCount, 0);
   const disputedCount = all.filter((i) => i.status === 'open' && i.disputed).length;
   const openCount = all.filter((i) => i.status === 'open').length;
   main.replaceChildren(
