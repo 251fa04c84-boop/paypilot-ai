@@ -100,6 +100,14 @@ test('portfolioTriage accurately groups invoices and detects actions', () => {
   assert.equal(Object.hasOwn(triage, 'totalOverdueAmount'), false);
 });
 
+test('reminder plan explanation does not imply nominal amount affects urgency score', () => {
+  const inv = { id: 'score-copy', client: 'Example', number: 'S-1', amount: 1200, currency: 'USD', issueDate: '2026-09-01', dueDate: '2026-10-01', status: 'open', disputed: false, reminderCount: 1, lastReminderAt: '2026-10-20' };
+  const triage = portfolioTriage([inv], { today: '2026-10-27', db: { proposals: [] } });
+  const item = triage.items[0];
+  assert.match(item.recommendation.reason, /excluded from this score/);
+  assert.match(item.recommendation.wouldChangeIf.join(' '), /do not affect urgency ranking/);
+});
+
 test('portfolioTriage never adds unlike currency amounts into one misleading total', () => {
   const invoices = [
     { id: 'usd', client: 'USD Client', number: 'USD-1', amount: 100, currency: 'USD', issueDate: '2026-09-01', dueDate: '2026-10-01', status: 'open', disputed: false },
