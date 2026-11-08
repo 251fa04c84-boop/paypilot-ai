@@ -54,6 +54,15 @@ test('invoices we advise waiting on rank below actionable ones and are never hig
   const q = P.recoveryQueue(list, '2026-03-10');
   assert.deepEqual(q.map((a) => a.invoiceId), ['x', 'w']); assert.equal(q[1].level, 'low');
 });
+test('disputed invoices are excluded from the active recovery queue', () => {
+  const list = [
+    inv({ id: 'active', dueDate: '2026-03-05', amount: 500 }),
+    inv({ id: 'disputed', dueDate: '2026-01-01', amount: 9000, disputed: true }),
+  ];
+  const q = P.recoveryQueue(list, '2026-03-10');
+  assert.deepEqual(q.map((a) => a.invoiceId), ['active']);
+  assert.equal(P.assess(list[1], '2026-03-10').action, 'human_review');
+});
 test('a large invoice 12 days overdue is not rated low', () => {
   assert.notEqual(P.assess(inv({ amount: 2800, dueDate: '2026-02-26' }), '2026-03-10').level, 'low');
 });
