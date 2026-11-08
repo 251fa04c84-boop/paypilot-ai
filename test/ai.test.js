@@ -26,7 +26,7 @@ test('draft validation rejects invented URLs and unsupported legal or penalty la
 });
 
 test('draft validation enforces the 120-word limit and preserves the payment placeholder', () => {
-  const long = ('Please review invoice D-1002. ').repeat(125) + '{{PAYMENT_LINK}}';
+  const long = ('D-1002 ').repeat(121) + '{{PAYMENT_LINK}}';
   assert.equal(validateDraft(long, invoice).reason, 'more than 120 words');
   const valid = validateDraft('Hello, invoice D-1002 for 340.00 USD is overdue. ' + '{{PAYMENT_LINK}}', invoice);
   assert.equal(valid.ok, true);
