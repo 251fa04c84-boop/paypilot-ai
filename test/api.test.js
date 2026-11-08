@@ -114,6 +114,23 @@ test('no draft when the advice is to wait, unless forced', async () => {
   } finally { t.close(); }
 });
 
+test('invoice amount and currency cannot change while a PayPal checkout is pending', async () => {
+  const t = await boot();
+  try {
+    const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
+    const checkout = await t.call('POST', `/api/invoices/${id}/pay`);
+    assert.equal(checkout.status, 200);
+    const amountEdit = await t.call('PUT', `/api/invoices/${id}`, { amount: 999 });
+    assert.equal(amountEdit.status, 409);
+    assert.match(amountEdit.json.error, /open PayPal Sandbox checkout/i);
+    const currencyEdit = await t.call('PUT', `/api/invoices/${id}`, { currency: 'EUR' });
+    assert.equal(currencyEdit.status, 409);
+    const unchanged = await t.call('GET', `/api/invoices/${id}`);
+    assert.equal(unchanged.json.amount, NEW.amount);
+    assert.equal(unchanged.json.currency, NEW.currency);
+  } finally { t.close(); }
+});
+
 test('PayPal: success path verifies server-side, and repeated capture does not capture twice', async () => {
   const t = await boot();
   try {
