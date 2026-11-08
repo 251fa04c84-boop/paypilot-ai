@@ -37,12 +37,24 @@ Do not claim:
 
 ## Release gates
 
-1. Every code change is on the hardening branch until tests pass.
-2. The latest branch must pass the complete Node 22 test workflow before merge.
-3. The live hosted app must be checked separately; a green test suite does not prove a live Sandbox transaction.
-4. No deploy until a release candidate is explicitly reviewed.
+1. Keep changes isolated on reviewable branches until the relevant tests pass.
+2. Require the complete Node 22 test workflow to pass before merging.
+3. Render is configured for automatic deployment from `main`; after each merge, verify that the exact merged commit is deployed and healthy before claiming the live demo contains the change.
+4. Check the live hosted app separately; a green test suite does not prove a live Sandbox transaction or live webhook delivery.
 5. The final submission must link the public repo, hosted demo, tool disclosure, complete description and public YouTube video under three minutes.
 6. The demo must use test records and PayPal Sandbox credentials only.
+
+## Current competitor benchmark (public Devpost descriptions, checked 8 Nov 2026)
+
+These are competitors' published claims, not independently verified product audits.
+
+- **[Unstuck](https://devpost.com/software/unstuck-ipxchy)** is the closest direct receivables competitor. Its public description claims PayPal Invoicing v2 cause-specific remedies, client-facing payment plans, Gemini diagnosis, AG Grid/AG Studio, and 276 automated tests. It also explicitly says actions/client payments are simulated and sandbox writes/webhooks are not yet verified live. Its breadth and root-cause narrative are stronger than PayPilot's today; PayPilot's strongest counter-evidence is its independently observed buyer-approved Sandbox capture and server-side settlement verification.
+- **[Cross-Border Reconciliation Agent](https://devpost.com/software/paypal-reconciliation-agent)** competes strongly on technical breadth: its public page claims 178 Sandbox ledger rows, multiple PayPal API families, 170 logged actions, and end-to-end Sandbox cycles. Its primary problem is reconciliation, not small-business recovery.
+- **[CartSplit AI](https://devpost.com/software/cartsplit-ai-paypal-ai-hackathon-2026-demo)** targets agentic commerce and group payments with Channel3, APIMatic, Orders and Invoicing APIs. It is less directly comparable to receivables recovery, but it raises the bar for visible multi-agent workflows and sponsor-tool integration.
+
+### Competitive response
+
+Do not imitate every competitor feature or add sponsor logos/dependencies without meaningful use. Prioritise evidence that PayPilot already does well: a real buyer-approved Sandbox checkout, strict server-side capture matching, dispute-aware blocking, stale-approval revalidation, and an auditable end-to-end recovery loop. To close the direct Unstuck gap, improve evidence-based diagnosis of *why* an invoice is unpaid only where the source record actually contains that evidence; clearly label missing client replies or payment promises as unknown. Do not invent root causes or claim real-world recovery-rate improvements from demo records.
 
 ## Demo story
 
