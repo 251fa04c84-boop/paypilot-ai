@@ -39,6 +39,14 @@ The product's core differentiator is the full chain from portfolio triage to evi
 | Innovation / idea | Portfolio-level recovery orchestration with explicit authority boundaries and payment verification |
 | Presentation | Run a portfolio sweep, inspect a disputed/overdue invoice, approve a recovery action, complete Sandbox payment, show verified result and audit trail |
 
+## The problem and intended impact
+
+PayPilot is designed for small service businesses, freelancers and boutique agencies that manage overdue client invoices without a dedicated receivables team. The workflow helps an operator decide which account needs attention, when to wait, when to pause a dispute, and whether payment was actually confirmed.
+
+Recent U.S. research illustrates the problem: Intuit QuickBooks' 2026 report says 59% of surveyed businesses had invoices overdue by 30+ days and businesses with unpaid invoices were owed $17,700 on average ([QuickBooks](https://quickbooks.intuit.com/r/small-business-data/small-business-late-payments-report-2026/)). Bluevine's February 2026 survey of 1,052 U.S. small-business owners found 29% delayed their own pay because customers paid late and 17% missed or nearly missed payroll ([Bluevine](https://www.bluevine.com/newsroom/late-payment-gap-survey-press-release)). These are U.S. survey findings, not global estimates.
+
+**Impact honesty:** these statistics establish the problem, not PayPilot's effectiveness. Our demo proves a controlled workflow and a PayPal Sandbox capture; it does not prove improved recovery rates, faster payment or hours saved. See [`docs/IMPACT_MODEL.md`](docs/IMPACT_MODEL.md) for the measurement plan and pilot metrics.
+
 ## Why this is an agent, not just a chatbot
 
 A chatbot can suggest what to do. PayPilot evaluates invoice records, separates facts from conclusions, proposes a bounded action, waits for explicit human approval, revalidates the invoice, executes only an allowlisted operation, verifies payment with PayPal, updates the record, and logs the result.
