@@ -161,25 +161,46 @@ async function viewMission() {
   const [q, all, open] = await Promise.all([api('GET', '/api/recovery'), api('GET', '/api/invoices'), api('GET', '/api/proposals?open=1')]);
   const sum = all.length ? await api('GET', '/api/summary') : [];
   const waiting = open.filter((p) => p.status === 'pending' || p.status === 'approved');
-  main.replaceChildren(h('h2', {}, 'Recovery Mission Control'), ...totals(sum));
-  if (waiting.length) main.append(h('div', { class: 'card glow' }, h('div', { class: 'row' }, h('span', { class: 'name' }, `${waiting.length} approval${waiting.length === 1 ? '' : 's'} waiting for you`), h('button', { class: 'primary', onclick: () => switchTab('approvals') }, 'Review'))));
-
+  const overdueCount = q.filter((x) => x.assessment.overdueDays > 0).length;
+  const disputedCount = all.filter((i) => i.status === 'open' && i.disputed).length;
+  const openCount = all.filter((i) => i.status === 'open').length;
+  main.replaceChildren(
+    h('section', { class: 'mission-hero' },
+      h('div', { class: 'hero-copy' },
+        h('div', { class: 'eyebrow' }, 'PAYPILOT INTELLIGENCE · RECEIVABLES COMMAND CENTER'),
+        h('h2', {}, 'Turn overdue invoices into verified recoveries.'),
+        h('p', {}, 'Prioritise the right account, understand the evidence, approve the next move, and verify payment with PayPal Sandbox.'),
+        h('div', { class: 'hero-tags' }, pill('ok', 'Rules-led decisions'), pill('warn', 'Human approval required'), pill('none', 'Sandbox payments only'))),
+      h('div', { class: 'hero-mark', 'aria-hidden': 'true' }, h('span', { class: 'hero-orbit orbit-one' }), h('span', { class: 'hero-orbit orbit-two' }), h('span', { class: 'hero-core' }, 'P'))),
+    h('section', { class: 'command-strip' },
+      h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Open invoices'), h('strong', {}, String(openCount)), h('span', { class: 'stat-note' }, 'Across your portfolio')),
+      h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Need attention'), h('strong', {}, String(overdueCount)), h('span', { class: 'stat-note' }, 'Overdue or due soon')),
+      h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Awaiting review'), h('strong', {}, String(waiting.length)), h('span', { class: 'stat-note' }, 'Human decision required')),
+      h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Paused disputes'), h('strong', {}, String(disputedCount)), h('span', { class: 'stat-note' }, 'Collection safely held'))));
+  if (waiting.length) main.append(h('div', { class: 'review-banner' },
+    h('div', {}, h('strong', {}, `${waiting.length} decision${waiting.length === 1 ? '' : 's'} need your attention`), h('p', {}, 'Nothing in this queue executes without your approval.')),
+    h('button', { class: 'primary', onclick: () => switchTab('approvals') }, 'Review approvals')));
   if (all.length > 0) {
-    const sweepCard = h('div', { class: 'card glow' },
-      h('div', { class: 'row' }, h('span', { class: 'name' }, '🤖 Autonomous Recovery Autopilot'), h('span', { class: 'badge ok' }, 'multi-step triage')),
-      h('p', { class: 'muted' }, 'Let the agent scan all open invoices, calculate recovery urgency, and prepare batched proposals for your explicit review in the Approvals queue.'),
+    main.append(h('section', { class: 'autopilot-panel' },
+      h('div', { class: 'autopilot-heading' }, h('div', {}, h('div', { class: 'eyebrow' }, 'CONTROLLED AUTONOMY'), h('h3', {}, 'Portfolio Autopilot')),
+        h('span', { class: 'badge ok' }, 'Observe · analyse · propose')),
+      h('p', { class: 'muted' }, 'One sweep evaluates every open invoice, ranks urgency using explainable rules, and stages eligible recovery proposals for your review. Disputes, recent reminders and paid invoices are protected.'),
       h('div', { class: 'actions' },
         h('button', { class: 'primary', onclick: lock('Scanning portfolio…', async () => {
           const r = await api('POST', '/api/agent/triage/apply');
           toast(`Autopilot sweep finished: ${r.count} recovery proposal(s) staged.`);
           await render();
           if (r.count > 0) switchTab('approvals');
-        }) }, 'Run Portfolio Autopilot Sweep')));
-    main.append(sweepCard);
+        }) }, 'Run portfolio sweep'),
+        h('span', { class: 'muted small' }, 'No silent sending · No AI-controlled payment status'))));
   }
-
-  main.append(h('h2', {}, 'Priority queue'));
-  if (!all.length) main.append(h('div', { class: 'card empty' }, h('p', {}, 'No invoices yet. Add one, or load the clearly labelled demo scenarios.'), h('div', { class: 'actions center' }, h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'), h('button', { onclick: () => switchTab('invoices') }, 'Add an invoice'))));
+  main.append(h('section', { class: 'portfolio-section' },
+    h('div', { class: 'section-heading' }, h('div', {}, h('div', { class: 'eyebrow' }, 'FINANCIAL SNAPSHOT'), h('h3', {}, 'Portfolio exposure')), h('span', { class: 'muted small' }, 'Grouped by currency · deterministic totals')),
+    ...totals(sum)));
+  main.append(h('section', { class: 'priority-section' },
+    h('div', { class: 'section-heading' }, h('div', {}, h('div', { class: 'eyebrow' }, 'NEXT BEST ACTIONS'), h('h3', {}, 'Recovery priority queue')),
+      h('span', { class: 'badge warn' }, `${q.length} to review`))));
+  if (!all.length) main.append(h('div', { class: 'card empty' }, h('p', {}, 'Your workspace is empty. Load the labelled demo scenarios to explore the workflow, or add your first invoice.'), h('div', { class: 'actions center' }, h('button', { class: 'primary', onclick: lock('Loading…', async () => { await api('POST', '/api/demo/seed'); await render(); }) }, 'Load demo scenarios'), h('button', { onclick: () => switchTab('invoices') }, 'Add an invoice'))));
   else if (!q.length) main.append(h('div', { class: 'card empty' }, 'Nothing needs attention right now.'));
   q.forEach(({ assessment: a, invoice: inv }) => main.append(invoiceCard(inv, a, () => openDetail(inv.id))));
   main.append(demoPanel(all));
