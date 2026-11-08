@@ -61,10 +61,15 @@ async function refreshBadge() {
 // ---------- shared pieces ----------
 const badge = (level) => h('span', { class: 'badge ' + level }, level === 'none' ? 'no action' : level + ' priority');
 function invoiceCard(inv, a, onOpen) {
+  const timing = inv.status === 'paid'
+    ? `Paid (${inv.paymentMethod === 'paypal_sandbox' ? 'PayPal Sandbox, verified' : inv.paymentMethod === 'manual' ? 'marked manually' : 'demo record'})`
+    : a.overdueDays > 0 ? `${a.overdueDays} days overdue`
+      : a.dueInDays === 0 ? 'Due today'
+        : a.dueInDays === 1 ? 'Due tomorrow' : `Due in ${a.dueInDays} days`;
   return h('div', { class: 'card' },
-    h('div', { class: 'row' }, h('span', { class: 'name' }, inv.client), badge(a.level)),
+    h('div', { class: 'row' }, h('span', { class: 'name' }, inv.client), h('span', { class: 'badge ' + a.level, title: 'Explainable urgency score; not a payment probability.' }, `${a.level} priority · ${a.score}/100`)),
     h('div', { class: 'row' }, h('span', { class: 'muted' }, `${inv.number} · ${money(inv.amount, inv.currency)}`), h('span', {}, inv.disputed && h('span', { class: 'badge bad' }, 'DISPUTED'), ' ', inv.demo && h('span', { class: 'badge demo' }, 'DEMO'))),
-    h('p', { class: 'muted' }, inv.status === 'paid' ? `Paid (${inv.paymentMethod === 'paypal_sandbox' ? 'PayPal Sandbox, verified' : inv.paymentMethod === 'manual' ? 'marked manually' : 'demo record'})` : (a.overdueDays ? `${a.overdueDays} days overdue` : `Due ${inv.dueDate}`)),
+    h('p', { class: 'muted' }, timing),
     h('p', {}, a.recommendation),
     h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: onOpen }, 'Open')));
 }
