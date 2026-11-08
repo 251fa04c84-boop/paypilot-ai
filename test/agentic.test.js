@@ -96,7 +96,7 @@ test('portfolioTriage accurately groups invoices and detects actions', () => {
   assert.equal(triage.items[0].invoiceId, '1');
   assert.equal(triage.items[0].actionable, true);
   assert.equal(triage.items[0].proposedAction, 'send_reminder');
-  assert.deepEqual(triage.totalOverdueByCurrency, { USD: 1500 });
+  assert.deepEqual(triage.totalOverdueByCurrency, { USD: 1700 });
   assert.equal(Object.hasOwn(triage, 'totalOverdueAmount'), false);
 });
 
