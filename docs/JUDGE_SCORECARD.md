@@ -44,17 +44,38 @@ Do not claim:
 5. The final submission must link the public repo, hosted demo, tool disclosure, complete description and public YouTube video under three minutes.
 6. The demo must use test records and PayPal Sandbox credentials only.
 
-## Current competitor benchmark (public Devpost descriptions, checked 8 Nov 2026)
+## Current competitor benchmark (public Devpost pages checked 8 Nov 2026)
 
-These are competitors' published claims, not independently verified product audits.
+These are competitor-published descriptions, not independent security or product audits. Features and test counts below are claims on their project pages unless explicitly identified as an independently verified observation.
 
-- **[Unstuck](https://devpost.com/software/unstuck-ipxchy)** is the closest direct receivables competitor. Its public description claims PayPal Invoicing v2 cause-specific remedies, client-facing payment plans, Gemini diagnosis, AG Grid/AG Studio, and 276 automated tests. It also explicitly says actions/client payments are simulated and sandbox writes/webhooks are not yet verified live. Its breadth and root-cause narrative are stronger than PayPilot's today; PayPilot's strongest counter-evidence is its independently observed buyer-approved Sandbox capture and server-side settlement verification.
-- **[Cross-Border Reconciliation Agent](https://devpost.com/software/paypal-reconciliation-agent)** competes strongly on technical breadth: its public page claims 178 Sandbox ledger rows, multiple PayPal API families, 170 logged actions, and end-to-end Sandbox cycles. Its primary problem is reconciliation, not small-business recovery.
-- **[CartSplit AI](https://devpost.com/software/cartsplit-ai-paypal-ai-hackathon-2026-demo)** targets agentic commerce and group payments with Channel3, APIMatic, Orders and Invoicing APIs. It is less directly comparable to receivables recovery, but it raises the bar for visible multi-agent workflows and sponsor-tool integration.
+| Project | Competitive strengths described publicly | Stated limitations / evidence boundary | Implication for PayPilot |
+|---|---|---|---|
+| [Unstuck](https://devpost.com/software/unstuck-ipxchy) | Closest direct receivables-recovery concept; cause-specific diagnosis from client words, owner policy checks, client-facing payment plans, AG Studio insights, six-stage resolution loop | Its page explicitly labels demo actions and client payments as simulations, says PayPal was not called, and says sandbox writes/webhooks are not yet verified live | Stronger cause-of-delay narrative and AG Studio presentation. PayPilot must lead with real verified Sandbox settlement, dispute-aware controls and strict evidence/unknown separation |
+| [Kioku × PayPal](https://devpost.com/software/kioku-x-paypal) | Broad owner-approved agent workflow for creating/sending invoices, reminders, recording non-PayPal payments, reading PayPal as source of truth, checking model claims against provider state; AG Grid; page claims 248 tests | Project page says setup requires the judge's own Sandbox keys and describes a local setup rather than a hosted judge demo; no independent audit performed | Stronger breadth and agent memory narrative. PayPilot should not imitate everything; show a tighter, more auditable recovery-to-capture loop with a hosted zero-setup experience |
+| [SettleSight](https://devpost.com/software/settlesight-5vwzu0) | Reconciliation cockpit, PayPal Invoicing v2 + Transaction Search, fee/partial/combined/refund/duplicate heuristics, AG Studio and custom widgets; page describes a $25 Sandbox partial-payment write-back and 80 tests | Page explicitly says synthetic demo data and Sandbox records; its listed next steps include real-time webhooks | Stronger reconciliation depth and sponsor-tool use. PayPilot should emphasise recovery operations rather than compete as a bookkeeping/reconciliation suite |
+| [ReconPilot](https://devpost.com/software/reconpilot) | Natural-language AI filters over PayPal Sandbox transactions, deterministic duplicate/fee/refund checks, draft recovery invoices, flagged-row export; AG Grid + Gemini function calling | Page says its grid combines real Sandbox transactions with a generated demo ledger of about 250 planted-error rows; direct refund handling and webhooks are listed as future work | Stronger AI-driven table interaction and transaction anomaly coverage. PayPilot's advantage is approval-bound workflow and verified capture safeguards |
+| [Cross-Border Reconciliation Agent](https://devpost.com/software/paypal-reconciliation-agent) | Public page describes multi-API reconciliation and Sandbox ledger workflows | Claims not independently checked in this review; focus is reconciliation, not the same receivables-recovery problem | Adjacent competitor, not the closest product match |
+| [CartSplit AI](https://devpost.com/software/cartsplit-ai-paypal-ai-hackathon-2026-demo) | Agentic group payments and shopping with sponsor integrations such as Channel3/APIMatic | Different customer problem; not a direct invoice-recovery substitute | Raises the overall bar for clear agentic workflows and meaningful sponsor-tool integration |
 
-### Competitive response
+### PayPilot's defensible position
 
-Do not imitate every competitor feature or add sponsor logos/dependencies without meaningful use. Prioritise evidence that PayPilot already does well: a real buyer-approved Sandbox checkout, strict server-side capture matching, dispute-aware blocking, stale-approval revalidation, and an auditable end-to-end recovery loop. To close the direct Unstuck gap, improve evidence-based diagnosis of *why* an invoice is unpaid only where the source record actually contains that evidence; clearly label missing client replies or payment promises as unknown. Do not invent root causes or claim real-world recovery-rate improvements from demo records.
+PayPilot should not claim that no competitor has a real Sandbox integration. SettleSight and Kioku also describe Sandbox operations. Its defensible proof is narrower and specific:
+
+1. A previously completed, buyer-approved PayPal Sandbox checkout and capture for Acme Studio D-1001 ($1,200 USD), with server-side invoice/amount/currency/completed-status verification. This historical transaction is not present in the reset live demo dataset.
+2. Dispute-aware blocking, including protection against capture after dispute status changes.
+3. Approval snapshot revalidation: material invoice edits cancel stale proposals before execution.
+4. Currency-neutral urgency ranking and currency-grouped exposure.
+5. A small, hosted, no-login judge experience that makes the core workflow accessible without asking judges to configure Sandbox credentials.
+
+### Competitive gaps to address
+
+- Make the first 20 seconds explain why PayPilot is not a generic reminder chatbot.
+- Show one source-backed reason and clearly label missing client responses/payment promises as unknown; never invent a root cause.
+- Make the dispute hold and stale-approval behavior visible, not buried in documentation.
+- Explain that Gemini drafts/explains only; deterministic policy governs eligibility and PayPal governs verified payment status.
+- Complete the public demo video. A strong product without a public video risks losing presentation points.
+- Do not bolt on AG Grid/AG Studio or another sponsor tool solely for a logo. Only pursue a sponsor award if a useful integration can be built, tested and shown honestly before submission.
+
 
 ## Demo story
 
