@@ -84,6 +84,9 @@ function invoiceCard(inv, a, onOpen) {
     meter,
     h('p', { class: 'muted invoice-timing' }, timing),
     h('p', { class: 'invoice-recommendation' }, a.recommendation),
+    h('details', { class: 'score-explain' },
+      h('summary', {}, 'Why this score?'),
+      h('ul', { class: 'list' }, (Array.isArray(a.reasons) ? a.reasons : []).map((reason) => h('li', {}, reason)))),
     h('div', { class: 'actions invoice-actions' }, h('button', { class: 'primary', onclick: onOpen }, 'Open invoice')));
 }
 const tile = (label, value, cur, sub) => h('div', { class: 'tile' }, h('div', { class: 'muted small' }, label), h('div', { class: 'big' }, `${Number(value).toFixed(2)} ${cur}`), h('div', { class: 'muted small' }, sub));
