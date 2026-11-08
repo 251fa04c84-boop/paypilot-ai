@@ -4,11 +4,40 @@
 **Source:** https://github.com/251fa04c84-boop/paypilot-ai  
 **Hackathon:** PayPal AI Hackathon 2026
 
-PayPilot AI helps small businesses decide what to do about unpaid invoices. It combines deterministic invoice rules, optional Gemini explanations, human approval, PayPal Sandbox checkout, server-side payment verification, and an audit trail.
+PayPilot AI is an evidence-first receivables recovery agent for small businesses. It turns a scattered invoice list into a prioritised, explainable recovery plan: deterministic rules identify which accounts need attention, Gemini can translate the evidence into plain language, a human approves the exact next action, and PayPal Sandbox confirms whether money was actually captured. Every decision and outcome is traceable.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
-> **Restricted demo:** there is no login or tenant isolation. Use only the included demo data; do not enter real customer or financial information.  
+> **Restricted demo:** there is no login or tenant isolation. Production browser-facing mutations are disabled by default; set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` only when intentionally opening the shared judge workflow. Invoice create/edit/delete/manual settlement remain disabled in production regardless. Verified PayPal capture and signed webhook endpoints remain available. Use only included demo data; do not enter real customer or financial information.  
 > **Storage:** invoice and audit data use a local JSON file. On ephemeral/free hosting, data can reset when the service restarts. This is a hackathon demo, not a production accounting system.
+
+### Public demo mutation switch
+
+- Production defaults to read-only for browser-facing state changes because all visitors otherwise share one database.
+- To enable the interactive judge walkthrough, explicitly set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` in the hosting environment and restart/redeploy. This enables shared demo actions such as drafts, approvals, proposals and demo seeding; it does **not** enable invoice CRUD or demo-admin simulation controls.
+- Keep it unset/false when the app is not being actively demonstrated. This is a temporary judge-demo control, not a substitute for authentication or tenant isolation.
+
+## What makes PayPilot different
+
+Most invoice tools stop at reminders, and most chat interfaces stop at suggestions. PayPilot connects the portfolio-level decision to a controlled, verifiable workflow:
+
+- **Portfolio-first, not prompt-first:** one sweep evaluates every open invoice and stages a ranked set of proposals.
+- **Explainable prioritisation:** the score is a transparent urgency heuristic built from days overdue, invoice amount, reminder history and due-soon timing. It is not a probability of payment or a credit score.
+- **Evidence before language:** verified invoice facts and deterministic rules are kept separate from optional Gemini commentary.
+- **Human authority at the point of action:** the operator reviews the exact proposed action; the server revalidates the invoice and approval before execution.
+- **Money movement is not inferred:** a checkout is only an order. An invoice is marked paid only after server-side PayPal Sandbox capture verification or a verified signed webhook.
+- **Safety is part of the workflow:** disputed and paid invoices are blocked; recent reminders can trigger a wait recommendation; untrusted invoice notes cannot instruct the agent.
+
+The product's core differentiator is the full chain from portfolio triage to evidence-backed approval to verified payment—not a claim that an LLM autonomously controls money.
+
+## Judge evaluation map
+
+| Judging area | What to inspect in PayPilot |
+|---|---|
+| Technological implementation | Portfolio triage, Gemini interpretation, bounded action allowlist, approval revalidation, PayPal Orders v2 Sandbox, capture checks, signed webhook verification, audit export |
+| Design | Mission Control, currency-separated financial snapshot, priority queue, approval inbox, invoice evidence view, activity timeline |
+| Potential impact | Small-business overdue receivables; prioritisation and operator time; dispute-aware collection; measured outcomes must come from real use, not demo estimates |
+| Innovation / idea | Portfolio-level recovery orchestration with explicit authority boundaries and payment verification |
+| Presentation | Run a portfolio sweep, inspect a disputed/overdue invoice, approve a recovery action, complete Sandbox payment, show verified result and audit trail |
 
 ## Why this is an agent, not just a chatbot
 
@@ -144,7 +173,7 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 ## Known limitations
 
-- No authentication, user accounts or tenant isolation; restricted demo only.
+- No authentication, user accounts or tenant isolation; restricted shared demo only. The planned tenant-isolation architecture and release gates are documented in [docs/TENANT_ISOLATION_PLAN.md](docs/TENANT_ISOLATION_PLAN.md).
 - JSON-file storage is not durable on ephemeral/free hosting and may reset after a restart.
 - Rate-limit counters are in memory.
 - No email/SMS delivery; reminder messages are drafts for the operator to send.
@@ -155,3 +184,8 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+### Reverse-proxy rate-limit identity
+
+The application ignores `X-Forwarded-For` by default because clients can spoof it and bypass IP-based rate limits. Set `TRUST_PROXY=true` only when the deployment proxy is configured to overwrite/sanitize that header before forwarding requests. Do not enable it behind an untrusted proxy. When disabled, requests are grouped by the direct TCP peer address, which may cause shared limits behind a proxy; configure trusted proxy handling deliberately for the hosting environment.

@@ -18,6 +18,7 @@ class HttpError extends Error { constructor(status, message, extra) { super(mess
 
 function createApp(opts = {}) {
   const env = opts.env || process.env;
+  const isProduction = env.NODE_ENV === 'production' || env.RENDER === 'true';
   const port = Number(env.PORT) || 3000;
   const baseUrl = (env.APP_BASE_URL || env.RENDER_EXTERNAL_URL || `http://localhost:${port}`).replace(/\/$/, '');
   const now = opts.now || (() => new Date());
@@ -29,6 +30,12 @@ function createApp(opts = {}) {
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
+  // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
+  // Demo-admin controls are development-only. An environment flag must never enable simulated payment settlement in production.
+  const demoAdminEnabled = !isProduction && env.ENABLE_DEMO_ADMIN !== 'false';
+  // Public judge workflows mutate the shared demo database. Require an explicit production opt-in.
+  // Keep verified PayPal callbacks available even when browser-facing demo mutations are disabled.
+  const publicDemoMutationsEnabled = env.ENABLE_PUBLIC_DEMO_MUTATIONS === 'true' || (!isProduction && env.ENABLE_PUBLIC_DEMO_MUTATIONS !== 'false');
   const inflight = new Set();
   const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
@@ -47,7 +54,12 @@ function createApp(opts = {}) {
     draftAll: createLimiter({ windowMs: 60000, max: lim.draftAll || 8 }),
     pay: createLimiter({ windowMs: 60000, max: lim.pay || 20 }),
   };
-  const clientIp = (req) => (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress) || 'unknown';
+  // Never trust client-supplied X-Forwarded-For by default: it is trivial to spoof and bypass IP limits.
+// Enable TRUST_PROXY=true only when the hosting proxy is configured to overwrite this header.
+  const clientIp = (req) => {
+    const forwarded = env.TRUST_PROXY === 'true' ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '';
+    return forwarded || req.socket.remoteAddress || 'unknown';
+  };
   function checkLimits(req, p) {
     const ip = clientIp(req), t = Date.now(), tests = [];
     if (p.startsWith('/api/') || p.startsWith('/pay/') || p.startsWith('/paypal/')) tests.push([L.general, ip]);
@@ -61,6 +73,9 @@ function createApp(opts = {}) {
 
   const find = (list, id, label) => { const x = list.find((i) => i.id === id); if (!x) throw new HttpError(404, `${label} not found.`); return x; };
   const withA = (inv) => Object.assign({}, inv, { assessment: P.assess(inv, todayStr()) });
+  const requireMutableDemo = () => {
+    if (isProduction) throw new HttpError(403, 'Invoice editing is disabled on the public demo. Use the supplied judge scenarios.');
+  };
 
   function cleanInvoice(b, base = {}) {
     const inv = Object.assign({}, base);
@@ -148,9 +163,10 @@ function createApp(opts = {}) {
     routes.push({ method, re, keys, handler });
   };
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal) } } }));
+  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
+    requireMutableDemo();
     const inv = cleanInvoice(body, { id: newId(), status: 'open', demo: false, reminderCount: 0, lastReminderAt: null, createdAt: iso() });
     if (!('currency' in body)) inv.currency = 'USD';
     db.invoices.push(inv);
@@ -160,12 +176,16 @@ function createApp(opts = {}) {
   });
   route('GET', '/api/invoices/:id', ({ params }) => {
     const inv = find(db.invoices, params.id, 'Invoice');
-    return { json: Object.assign(withA(inv), { proposals: db.proposals.filter((p) => p.invoiceId === inv.id).map((p) => view(refreshExpiry(p))).reverse(), drafts: db.drafts.filter((d) => d.invoiceId === inv.id), actions: db.actions.filter((a) => a.invoiceId === inv.id).reverse() }) };
+    return { json: Object.assign(withA(inv), { proposals: db.proposals.filter((p) => p.invoiceId === inv.id).map((p) => view(readExpiry(p))).reverse(), drafts: db.drafts.filter((d) => d.invoiceId === inv.id), actions: db.actions.filter((a) => a.invoiceId === inv.id).reverse() }) };
   });
   route('PUT', '/api/invoices/:id', ({ params, body }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.status === 'paid') throw new HttpError(409, 'Paid invoices cannot be edited.');
     const upd = cleanInvoice(body, inv);
+    const changesPaymentTerms = upd.amount !== inv.amount || upd.currency !== inv.currency;
+    const pendingOrder = db.orders.find((o) => o.invoiceId === inv.id && o.status === 'created');
+    if (changesPaymentTerms && pendingOrder) throw new HttpError(409, 'This invoice has an open PayPal Sandbox checkout. Do not change its amount or currency until that checkout is completed or expires.');
     const beforeHash = snapshotHash(inv);
     if (body.status === 'void' || body.status === 'open') upd.status = body.status;
     Object.assign(inv, upd);
@@ -175,6 +195,7 @@ function createApp(opts = {}) {
     return { json: withA(inv) };
   });
   route('DELETE', '/api/invoices/:id', ({ params }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.paymentMethod === 'paypal_sandbox') throw new HttpError(409, 'Invoices with a recorded PayPal payment cannot be deleted. Void is not available once paid; keep it for the audit trail.');
     db.invoices = db.invoices.filter((i) => i.id !== inv.id); store.db.invoices = db.invoices;
@@ -183,6 +204,7 @@ function createApp(opts = {}) {
     return { json: { deleted: true } };
   });
   route('POST', '/api/invoices/:id/mark-paid-manually', ({ params }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.status !== 'open') throw new HttpError(409, `Invoice is ${inv.status}.`);
     inv.status = 'paid'; inv.paidAt = todayStr(); inv.paymentMethod = 'manual';
@@ -329,6 +351,7 @@ function createApp(opts = {}) {
     }
   });
   route('POST', '/api/demo/simulate-webhook', async ({ body }) => {
+    if (!demoAdminEnabled) throw new HttpError(403, 'Simulated payment settlement is disabled on the public deployment. Use a real PayPal Sandbox approval and verified capture.');
     const orderId = body && body.orderId;
     if (!orderId) throw new HttpError(400, 'orderId is required.');
     const rec = db.orders.find((o) => o.orderId === orderId);
@@ -366,26 +389,31 @@ function createApp(opts = {}) {
     store.save();
     return { json: { simulated: true, result: res } };
   });
-  route('GET', '/pay/:id', async ({ params }) => {
+  // A GET payment-link visit must be safe for email scanners and browser prefetchers.
+  // Starting a PayPal order is an explicit same-origin POST, gated like other public mutations.
+  route('GET', '/pay/:id', ({ params }) => {
     const inv = db.invoices.find((i) => i.id === params.id);
     if (!inv) return { status: 404, html: page('Invoice not found', 'This payment link is not valid.') };
-    if (inv.status !== 'open') return { html: page('Nothing to pay', `Invoice ${esc(inv.number)} is ${esc(inv.status)}.`) };
+    if (inv.status !== 'open') return { status: 409, html: page('Nothing to pay', `Invoice ${esc(inv.number)} is ${esc(inv.status)}.`) };
+    if (inv.disputed) return { status: 409, html: page('Payment unavailable', 'This invoice is under review, so payment is paused.') };
+    if (!publicDemoMutationsEnabled) return { status: 403, html: page('Payment unavailable', 'Interactive checkout is disabled on this public preview.') };
+    if (!ppNow().configured()) return { status: 503, html: page('Payment unavailable', 'PayPal Sandbox is not configured on this server.') };
+    const content = `<p>Invoice ${esc(inv.number)} · ${esc(`${Number(inv.amount).toFixed(2)} ${inv.currency}`)}</p><form method="post" action="/pay/${esc(inv.id)}/checkout"><button type="submit">Continue to PayPal Sandbox</button></form><p>Payment is not started until you press the button. PayPal Sandbox uses test money only.</p>`;
+    return { html: page('Continue to payment', content) };
+  });
+  route('POST', '/pay/:id/checkout', async ({ params }) => {
+    const inv = find(db.invoices, params.id, 'Invoice');
     try { return { redirect: await startPayment(inv) }; }
     catch (e) { return { status: e.status || 500, html: page('Payment unavailable', esc(e.status ? e.message : 'Could not start the payment.')) }; }
   });
   route('GET', '/paypal/return', ({ query }) => ({ redirect: `/?payment=return&order=${encodeURIComponent(String(query.token || '').replace(/[^A-Za-z0-9-]/g, ''))}` }));
-  route('GET', '/paypal/cancel', ({ query }) => {
-    const rec = db.orders.find((o) => o.orderId === query.token);
-    if (rec && rec.status === 'created') {      rec.status = 'cancelled';
-      const cp = rec.proposalId && db.proposals.find((x) => x.id === rec.proposalId);
-      if (cp && cp.status === 'executed') { cp.status = 'cancelled'; cp.error = 'The buyer cancelled in PayPal. Nothing was paid.'; }
-      addAction(db, { invoiceId: rec.invoiceId, type: 'payment_cancelled', detail: `Buyer cancelled PayPal Sandbox order ${rec.orderId}. Invoice unchanged.` }, iso());
-      store.save();
-    }
-    return { redirect: '/?payment=cancelled' };
-  });
+  // PayPal's browser return is a cross-site top-level GET. Never mutate payment state here:
+  // a GET can be triggered by a third-party page, prefetcher, or link scanner. Only verified
+  // PayPal API/webhook results may change settlement state.
+  route('GET', '/paypal/cancel', () => ({ redirect: '/?payment=cancelled' }));
   route('POST', '/api/demo/seed', () => { seedDemo(); return { status: 201, json: { seeded: true } }; });
   route('DELETE', '/api/demo', () => {
+    if (!demoAdminEnabled) throw new HttpError(403, 'Shared demo reset is disabled on the public deployment.');
     const ids = new Set(db.invoices.filter((i) => i.demo).map((i) => i.id));
     db.invoices = db.invoices.filter((i) => !ids.has(i.id)); store.db.invoices = db.invoices;
     for (const k of ['drafts', 'orders', 'actions', 'proposals']) { const keep = db[k].filter((x) => !ids.has(x.invoiceId)); db[k].length = 0; db[k].push(...keep); }
@@ -397,6 +425,13 @@ function createApp(opts = {}) {
 
   // ================= Agent workflow =================
   const view = (p) => { const i = db.invoices.find((x) => x.id === p.invoiceId); return Object.assign({}, p, { invoice: i ? { id: i.id, client: i.client, number: i.number, amount: i.amount, currency: i.currency } : null }); };
+  // Read paths project expiry without mutating state. Persist the transition only on a write path.
+  function readExpiry(p) {
+    if ((p.status === 'pending' || p.status === 'approved') && Date.parse(iso()) > Date.parse(p.expiresAt)) {
+      return Object.assign({}, p, { status: 'expired' });
+    }
+    return p;
+  }
   function refreshExpiry(p) {
     if ((p.status === 'pending' || p.status === 'approved') && Date.parse(iso()) > Date.parse(p.expiresAt)) {
       p.status = 'expired';
@@ -456,7 +491,7 @@ function createApp(opts = {}) {
   });
 
   route('GET', '/api/proposals', ({ query }) => {
-    let list = db.proposals.map((p) => refreshExpiry(p));
+    let list = db.proposals.map(readExpiry);
     if (query.open) list = list.filter((p) => ['pending', 'approved', 'executed'].includes(p.status));
     return { json: list.slice().reverse().slice(0, 50).map(view) };
   });
@@ -533,6 +568,7 @@ function createApp(opts = {}) {
   });
 
   route('POST', '/api/invoices/:id/dispute', ({ params, body }) => {
+    requireMutableDemo();
     const inv = find(db.invoices, params.id, 'Invoice');
     if (inv.status !== 'open') throw new HttpError(409, `Invoice is ${inv.status}.`);
     const flag = Boolean(body.disputed);
@@ -634,6 +670,7 @@ function createApp(opts = {}) {
   });
 
   route('POST', '/api/demo/simulate', ({ body }) => {
+    if (!demoAdminEnabled) throw new HttpError(403, 'Global outage simulation controls are disabled on the public deployment.');
     if ('ai' in body) settings.simulateAi = Boolean(body.ai);
     if ('paypal' in body) settings.simulatePaypal = Boolean(body.paypal);
     store.save();
@@ -645,14 +682,25 @@ function createApp(opts = {}) {
 
   function readBody(req) {
     return new Promise((resolve, reject) => {
-      let size = 0; const chunks = [];
-      req.on('data', (c) => { size += c.length; if (size > 100000) { reject(new HttpError(413, 'Request too large.')); req.destroy(); } else chunks.push(c); });
+      let size = 0; let tooLarge = false; const chunks = [];
+      req.on('data', (c) => {
+        if (tooLarge) return;
+        size += c.length;
+        if (size > 100000) {
+          tooLarge = true;
+          chunks.length = 0;
+          reject(new HttpError(413, 'Request too large.'));
+          return;
+        }
+        chunks.push(c);
+      });
       req.on('end', () => {
+        if (tooLarge) return;
         if (!chunks.length) return resolve({});
         try { const v = JSON.parse(Buffer.concat(chunks).toString('utf8')); resolve(v && typeof v === 'object' ? v : {}); }
         catch (_) { reject(new HttpError(400, 'Invalid JSON.')); }
       });
-      req.on('error', reject);
+      req.on('error', (e) => { if (!tooLarge) reject(e); });
     });
   }
 
@@ -666,13 +714,34 @@ function createApp(opts = {}) {
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
-    const headers = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
+    const headers = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', 'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
     for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
     try {
       const m = routes.map((r) => ({ r, x: r.re.exec(url.pathname) })).find(({ r, x }) => x && r.method === req.method);
       if (!m) {
         if (req.method === 'GET' && !url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname);
         throw new HttpError(404, 'Not found.');
+      }
+      // Browser-facing state changes must not be triggerable by a hostile cross-site page.
+      // Requests without Origin remain supported for PayPal webhooks and trusted API clients.
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+        if (fetchSite === 'cross-site') throw new HttpError(403, 'Cross-site requests are not allowed.');
+        const origin = req.headers.origin;
+        if (origin) {
+          let parsedOrigin;
+          try { parsedOrigin = new URL(origin); } catch (_) { throw new HttpError(403, 'Invalid request origin.'); }
+          const requestHost = String(req.headers.host || '').toLowerCase();
+          const originHost = parsedOrigin.host.toLowerCase();
+          const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+          const expectedProtocol = forwardedProto === 'https' ? 'https:' : (req.socket.encrypted ? 'https:' : 'http:');
+          if (originHost !== requestHost || parsedOrigin.protocol !== expectedProtocol || parsedOrigin.username || parsedOrigin.password) {
+            throw new HttpError(403, 'Request origin does not match this application.');
+          }
+        }
+      }
+      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
+        throw new HttpError(403, 'Interactive demo actions are disabled on this public deployment.');
       }
       const blocked = checkLimits(req, url.pathname);
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });

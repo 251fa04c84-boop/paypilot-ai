@@ -59,3 +59,56 @@ details>summary{cursor:pointer;color:var(--cyan);padding:6px 0}
 .agent-step.done{color:var(--ok);border-color:var(--ok)}
 .agent-arrow{opacity:.4}
 
+
+
+/* 2026 competition-grade command centre refresh */
+:root{--bg:#070b14;--navy:#0d1625;--graphite:#111e30;--line:rgba(154,177,207,.17);--muted:#9aabc2;--violet:#8b7cff;--indigo:#526dff;--cyan:#48d8e8;--ink:#f3f7ff}
+body{background:radial-gradient(1000px 520px at 88% -12%,rgba(82,109,255,.17),transparent 62%),radial-gradient(760px 460px at -18% 18%,rgba(72,216,232,.09),transparent 62%),var(--bg);letter-spacing:.005em}
+.top{max-width:1120px;padding:22px 22px 10px}
+h1{font-size:1.65rem;letter-spacing:-.04em}
+.sub{letter-spacing:.02em}
+.status{gap:7px}
+main{max-width:1120px;padding:14px 22px 34px}
+h2{font-size:1.25rem;letter-spacing:-.025em}
+h3{font-size:1.02rem;letter-spacing:-.015em}
+.card{background:linear-gradient(155deg,rgba(17,30,48,.97),rgba(11,19,32,.98));border-color:rgba(154,177,207,.16);border-radius:17px;box-shadow:0 12px 34px rgba(0,0,0,.2)}
+.card.glow{border-color:rgba(139,124,255,.42);box-shadow:0 12px 36px rgba(32,45,95,.23)}
+.mission-hero{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:230px;padding:28px 32px;margin:6px 0 16px;border:1px solid rgba(125,150,255,.26);border-radius:22px;background:linear-gradient(112deg,rgba(18,32,54,.98),rgba(21,30,62,.94) 58%,rgba(15,38,57,.96));box-shadow:0 22px 65px rgba(0,0,0,.26)}
+.mission-hero:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 48%,rgba(72,216,232,.045));pointer-events:none}
+.hero-copy{position:relative;z-index:1;max-width:720px}
+.eyebrow{font-size:.68rem;font-weight:800;letter-spacing:.15em;color:var(--cyan);text-transform:uppercase;margin-bottom:7px}
+.mission-hero h2{font-size:clamp(1.55rem,3vw,2.35rem);line-height:1.12;max-width:660px;margin:0 0 10px;letter-spacing:-.045em}
+.mission-hero p{max-width:660px;color:#b9c8dc;margin:0;font-size:.96rem}
+.hero-tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}
+.hero-mark{position:relative;flex:0 0 155px;height:155px;display:grid;place-items:center}
+.hero-core{width:76px;height:76px;display:grid;place-items:center;border-radius:24px;background:linear-gradient(145deg,#8b7cff,#48d8e8);color:#08111c;font-size:2rem;font-weight:900;box-shadow:0 0 48px rgba(72,216,232,.2);z-index:1}
+.hero-orbit{position:absolute;border:1px solid rgba(72,216,232,.34);border-radius:50%;transform:rotate(-28deg)}
+.orbit-one{width:130px;height:82px}.orbit-two{width:158px;height:112px;transform:rotate(42deg);border-color:rgba(139,124,255,.35)}
+.command-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.command-stat{padding:15px 17px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(145deg,rgba(17,30,48,.92),rgba(11,19,32,.9));display:flex;flex-direction:column;gap:2px}
+.stat-label{font-size:.76rem;color:var(--muted)}
+.command-stat strong{font-size:1.8rem;line-height:1.25;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.stat-note{font-size:.73rem;color:#8092aa}
+.review-banner{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 18px;margin:0 0 16px;border:1px solid rgba(251,191,36,.3);border-radius:15px;background:rgba(251,191,36,.055)}
+.review-banner strong{font-size:.96rem}.review-banner p{margin:2px 0 0;color:var(--muted);font-size:.84rem}
+.autopilot-panel{padding:20px 22px;margin:0 0 22px;border:1px solid rgba(72,216,232,.24);border-radius:18px;background:linear-gradient(115deg,rgba(15,35,48,.96),rgba(13,23,39,.98) 65%,rgba(24,26,55,.94));box-shadow:0 14px 38px rgba(0,0,0,.18)}
+.autopilot-heading,.section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.autopilot-heading h3,.section-heading h3{margin:0;font-size:1.15rem}
+.autopilot-panel>p{max-width:780px;margin:9px 0 2px}
+.portfolio-section,.priority-section{margin:20px 0}
+.portfolio-section>.section-heading,.priority-section>.section-heading{margin-bottom:10px}
+.portfolio-section>.section-heading h3,.priority-section>.section-heading h3{font-size:1.2rem}
+.portfolio-section>.card{margin:10px 0}
+.tiles{grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.tile{padding:13px;border-color:rgba(154,177,207,.15);background:rgba(5,11,21,.48)}
+.big{font-size:1.12rem;letter-spacing:-.025em}
+.tabs{left:50%;right:auto;transform:translateX(-50%);width:min(100%,1120px);gap:8px;padding:9px 18px calc(9px + env(safe-area-inset-bottom,0px));background:rgba(7,11,20,.94);border:1px solid rgba(154,177,207,.18);border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -12px 34px rgba(0,0,0,.2)}
+.tabs button{font-size:.84rem;border-radius:11px}
+button,.btn{transition:transform .16s ease,border-color .16s ease,filter .16s ease}
+button:hover,.btn:hover{border-color:rgba(72,216,232,.42);filter:brightness(1.08)}
+button:active,.btn:active{transform:translateY(1px)}
+input,select,textarea{background:rgba(5,11,21,.75);border-color:rgba(154,177,207,.22)}
+@media(min-width:900px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}.mission-hero{padding:34px 40px}.command-stat{padding:17px 20px}}
+@media(max-width:680px){.top{padding:15px 14px 6px}main{padding:8px 14px 28px}.mission-hero{padding:21px 19px;min-height:190px}.hero-mark{flex-basis:86px;height:110px;opacity:.72}.hero-core{width:58px;height:58px;border-radius:19px;font-size:1.55rem}.orbit-one{width:88px;height:60px}.orbit-two{width:105px;height:76px}.command-strip{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.command-stat{padding:12px 13px}.command-stat strong{font-size:1.55rem}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.review-banner{align-items:flex-start;flex-direction:column}.tabs{width:100%;border-radius:15px 15px 0 0;padding-left:6px;padding-right:6px;gap:3px}.tabs button{font-size:.72rem;min-width:0;padding:8px 3px}.section-heading{align-items:flex-start}}
+@media(max-width:390px){.hero-mark{display:none}.mission-hero h2{font-size:1.5rem}.tabs button{font-size:.66rem}}
+@media(prefers-reduced-motion:reduce){button,.btn{transition:none}}
