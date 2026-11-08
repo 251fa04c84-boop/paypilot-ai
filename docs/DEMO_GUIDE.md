@@ -5,6 +5,20 @@
 
 This guide is designed for a short, reproducible evaluation. The complete public demo is restricted and uses demo records only.
 
+## 2-minute judge narrative
+
+**Opening line:** “Small businesses don't just need another reminder generator. They need to know which unpaid invoice to act on, why, and whether the payment actually arrived. PayPilot turns receivables into a controlled recovery workflow.”
+
+| Time | Show | Say |
+|---|---|---|
+| 0:00–0:15 | Mission Control hero and portfolio snapshot | “This is a portfolio recovery agent, not a chatbot. It prioritises the next best action and keeps the operator in control.” |
+| 0:15–0:35 | Run Portfolio Autopilot Sweep; open Approvals | “One pass evaluates the portfolio and stages proposals. It does not silently send messages or move money.” |
+| 0:35–0:55 | Open an overdue invoice; show facts, rules, risks and Gemini interpretation | “The score is a transparent urgency heuristic, not an AI prediction of payment. Gemini explains; deterministic rules decide eligibility.” |
+| 0:55–1:15 | Approve a reminder draft, inspect the exact text and audit entry | “The human approves the exact action. PayPilot prepares a draft; the operator sends it outside the app and confirms that it was sent.” |
+| 1:15–1:40 | Start Sandbox checkout, approve with a Sandbox buyer, return to PayPilot | “Creating an order is not payment. The server checks the capture against invoice, amount, currency and completed status.” |
+| 1:40–1:55 | Paid invoice evidence and Activity timeline | “Only verified PayPal evidence marks the invoice paid. The result is recorded for audit.” |
+| 1:55–2:00 | Close on Mission Control | “Prioritise with evidence. Approve with control. Verify the money.” |
+
 ## Suggested 2-minute walkthrough
 
 ### 0:00–0:15 — Problem and product
