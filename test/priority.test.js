@@ -52,7 +52,7 @@ test('scoring is deterministic (no randomness) and explained', () => {
   assert.deepEqual(a, b);
   assert.ok(a.reasons.length >= 2); assert.ok(a.reasons.some((r) => /past the due date/.test(r)));
 });
-test('higher amount and longer overdue rank higher; queue is sorted', () => {
+test('longer overdue ranks higher; raw amounts do not distort cross-currency urgency', () => {
   const list = [inv({ id: 'b', amount: 100, dueDate: '2026-03-01' }), inv({ id: 'c', amount: 9000, dueDate: '2026-01-15' }), inv({ id: 'd', status: 'paid' }), inv({ id: 'e', dueDate: '2026-12-01' })];
   const q = P.recoveryQueue(list, '2026-03-10');
   assert.deepEqual(q.map((x) => x.invoiceId), ['c', 'b']);
@@ -70,6 +70,12 @@ test('disputed invoices are excluded from the active recovery queue', () => {
   const q = P.recoveryQueue(list, '2026-03-10');
   assert.deepEqual(q.map((a) => a.invoiceId), ['active']);
   assert.equal(P.assess(list[1], '2026-03-10').action, 'human_review');
+});
+test('raw amounts in different currencies do not change the urgency score', () => {
+  const usd = P.assess(inv({ amount: 100, currency: 'USD', dueDate: '2026-02-26' }), '2026-03-10');
+  const inr = P.assess(inv({ amount: 100000, currency: 'INR', dueDate: '2026-02-26' }), '2026-03-10');
+  assert.equal(usd.score, inr.score);
+  assert.deepEqual(usd.reasons.filter((x) => /excluded from the urgency score/.test(x)), inr.reasons.filter((x) => /excluded from the urgency score/.test(x)));
 });
 test('a large invoice 12 days overdue is not rated low', () => {
   assert.notEqual(P.assess(inv({ amount: 2800, dueDate: '2026-02-26' }), '2026-03-10').level, 'low');
