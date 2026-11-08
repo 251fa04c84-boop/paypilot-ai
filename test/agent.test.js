@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createStore } = require('../lib/store');
 const { createApp } = require('../server');
-const { evaluate, looksLikeInstruction } = require('../lib/agent');
+const { evaluate, looksLikeInstruction, snapshotHash } = require('../lib/agent');
 
 const NEW = { client: 'Acme', number: 'INV-1', amount: 120.5, currency: 'USD', issueDate: '2026-01-01', dueDate: '2026-02-20' };
 let clock;
@@ -106,6 +106,30 @@ test('approvals expire, and an approval covers only its own action', async () =>
     assert.ok((await t.types(inv.id)).includes('approval_expired'));
   } finally { t.close(); }
 });
+test('approval snapshot changes when customer-facing facts, notes, or reminder history change', () => {
+  const base = { id: 'inv-1', client: 'Acme', number: 'INV-1', issueDate: '2026-01-01', dueDate: '2026-02-20', status: 'open', amount: 120.5, currency: 'USD', disputed: false, disputeNote: '', notes: '', reminderCount: 0, lastReminderAt: null };
+  const hash = snapshotHash(base);
+  for (const patch of [
+    { client: 'Renamed client' }, { number: 'INV-2' }, { issueDate: '2026-01-02' },
+    { notes: 'Updated customer context' }, { disputeNote: 'New dispute evidence' },
+    { reminderCount: 1 }, { lastReminderAt: '2026-03-09' },
+  ]) assert.notEqual(snapshotHash(Object.assign({}, base, patch)), hash);
+});
+
+test('editing customer-facing invoice identity cancels an already approved reminder', async () => {
+  const t = await boot();
+  try {
+    const inv = await t.mk();
+    const proposal = (await t.call('POST', `/api/invoices/${inv.id}/proposals`, { action: 'send_reminder' })).json;
+    await t.call('POST', `/api/proposals/${proposal.id}/decision`, { decision: 'approve' });
+    const edited = await t.call('PUT', `/api/invoices/${inv.id}`, { client: 'Renamed Client' });
+    assert.equal(edited.status, 200);
+    assert.equal(t.app.db.proposals.find((p) => p.id === proposal.id).status, 'cancelled');
+    assert.equal((await t.call('POST', `/api/proposals/${proposal.id}/execute`)).status, 409);
+    assert.equal(t.counts.create, 0);
+  } finally { t.close(); }
+});
+
 test('revalidation at execution: a changed invoice, a dispute or a payment cancels the approval', async () => {
   const t = await boot();
   try {
