@@ -174,7 +174,7 @@ async function viewMission() {
       h('div', { class: 'hero-mark', 'aria-hidden': 'true' }, h('span', { class: 'hero-orbit orbit-one' }), h('span', { class: 'hero-orbit orbit-two' }), h('span', { class: 'hero-core' }, 'P'))),
     h('section', { class: 'command-strip' },
       h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Open invoices'), h('strong', {}, String(openCount)), h('span', { class: 'stat-note' }, 'Across your portfolio')),
-      h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Need attention'), h('strong', {}, String(overdueCount)), h('span', { class: 'stat-note' }, 'Overdue or due soon')),
+      h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Overdue invoices'), h('strong', {}, String(overdueCount)), h('span', { class: 'stat-note' }, 'Past their due date')),
       h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Awaiting review'), h('strong', {}, String(waiting.length)), h('span', { class: 'stat-note' }, 'Human decision required')),
       h('div', { class: 'command-stat' }, h('span', { class: 'stat-label' }, 'Paused disputes'), h('strong', {}, String(disputedCount)), h('span', { class: 'stat-note' }, 'Collection safely held'))));
   if (waiting.length) main.append(h('div', { class: 'review-banner' },
