@@ -128,3 +128,96 @@ input,select,textarea{background:rgba(5,11,21,.75);border-color:rgba(154,177,207
   .tabs button{min-height:48px;font-size:.66rem;padding-left:2px;padding-right:2px}
   .count{margin-left:3px;padding-left:5px;padding-right:5px}
 }
+
+
+/* 2026 visual finish: restrained motion, layered colour and clearer interaction */
+:root{
+  --bg:#070b13;
+  --surface:#101b2b;
+  --surface-raised:#14243a;
+  --line:rgba(157,185,218,.18);
+  --accent:#7c8cff;
+  --accent-cyan:#50e0df;
+  --accent-lime:#b8f36b;
+}
+html{scroll-behavior:smooth}
+body{
+  background:
+    radial-gradient(ellipse 65rem 34rem at 82% -14%,rgba(91,113,255,.20),transparent 66%),
+    radial-gradient(ellipse 48rem 32rem at -20% 28%,rgba(44,210,207,.105),transparent 68%),
+    radial-gradient(ellipse 38rem 26rem at 100% 78%,rgba(124,140,255,.075),transparent 70%),
+    var(--bg);
+  background-attachment:fixed;
+}
+.top{position:relative}
+.top:after{
+  content:"";display:block;height:1px;margin:14px 0 0;
+  background:linear-gradient(90deg,transparent,rgba(80,224,223,.42),rgba(124,140,255,.38),transparent);
+  transform-origin:left;animation:line-in .9s ease-out both;
+}
+.mission-hero{
+  isolation:isolate;
+  background:
+    radial-gradient(ellipse at 80% 10%,rgba(80,224,223,.13),transparent 42%),
+    linear-gradient(118deg,rgba(18,33,55,.98),rgba(24,31,66,.97) 58%,rgba(12,40,52,.98));
+}
+.mission-hero:before{
+  content:"";position:absolute;inset:-1px;z-index:-1;border-radius:inherit;padding:1px;
+  background:linear-gradient(115deg,rgba(80,224,223,.48),rgba(124,140,255,.28),rgba(184,243,107,.16));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;
+}
+.hero-core{animation:core-breathe 5s ease-in-out infinite}
+.hero-orbit{animation:orbit-drift 18s linear infinite}
+.orbit-two{animation-direction:reverse;animation-duration:24s}
+.card,.command-stat,.autopilot-panel,.review-banner{
+  animation:surface-enter .48s cubic-bezier(.2,.75,.25,1) both;
+}
+.card:nth-of-type(2){animation-delay:.035s}
+.card:nth-of-type(3){animation-delay:.07s}
+.card:nth-of-type(4){animation-delay:.105s}
+.card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(80,224,223,.30);
+  box-shadow:0 16px 38px rgba(0,0,0,.25),0 0 0 1px rgba(80,224,223,.045);
+}
+.command-stat{position:relative;overflow:hidden}
+.command-stat:after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.035) 48%,transparent 72%);
+  transform:translateX(-120%);animation:stat-sheen 8s ease-in-out infinite;
+}
+.command-stat:nth-child(2):after{animation-delay:1.4s}
+.command-stat:nth-child(3):after{animation-delay:2.8s}
+.command-stat:nth-child(4):after{animation-delay:4.2s}
+.tabs{backdrop-filter:blur(18px) saturate(145%);-webkit-backdrop-filter:blur(18px) saturate(145%)}
+.tabs button[aria-current=page]{box-shadow:0 5px 20px rgba(91,113,255,.24)}
+button.primary,.btn.primary{
+  background:linear-gradient(112deg,#8b83ff 0%,#5d7bff 48%,#47d9dc 100%);
+  background-size:160% 160%;
+  color:#07111b;
+}
+button.primary:hover,.btn.primary:hover{background-position:100% 50%;box-shadow:0 8px 26px rgba(80,150,220,.25)}
+button:focus-visible,.btn:focus-visible{outline:2px solid var(--accent-cyan);outline-offset:3px}
+.badge.ok,.badge.paid{color:var(--accent-lime)}
+.agent-step.active{box-shadow:0 0 14px rgba(80,224,223,.13)}
+.toast{box-shadow:0 12px 34px rgba(0,0,0,.28)}
+@keyframes surface-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@keyframes line-in{from{transform:scaleX(.25);opacity:0}to{transform:scaleX(1);opacity:1}}
+@keyframes core-breathe{0%,100%{box-shadow:0 0 34px rgba(72,216,232,.16);transform:scale(1)}50%{box-shadow:0 0 58px rgba(72,216,232,.30);transform:scale(1.035)}}
+@keyframes orbit-drift{from{rotate:0deg}to{rotate:360deg}}
+@keyframes stat-sheen{0%,65%,100%{transform:translateX(-120%)}82%{transform:translateX(120%)}}
+@media(hover:hover){
+  .tabs button:hover{transform:translateY(-2px)}
+  .tile:hover{border-color:rgba(80,224,223,.28);background:rgba(16,31,49,.78)}
+}
+@media(max-width:680px){
+  body{background-attachment:scroll}
+  .mission-hero{box-shadow:0 14px 38px rgba(0,0,0,.24)}
+  .card:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .top:after,.hero-core,.hero-orbit,.card,.command-stat,.autopilot-panel,.review-banner,.command-stat:after{animation:none!important}
+  .card,button,.btn{transition:none!important}
+}
