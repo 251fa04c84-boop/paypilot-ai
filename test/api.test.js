@@ -390,6 +390,16 @@ test('public production mode blocks simulated payment settlement', async () => {
   } finally { t.close(); }
 });
 
+test('ENABLE_DEMO_ADMIN cannot enable simulated settlement in production', async () => {
+  const t = await boot({ env: { NODE_ENV: 'production', ENABLE_DEMO_ADMIN: 'true', ENABLE_PUBLIC_DEMO_MUTATIONS: 'true' } });
+  try {
+    const health = await t.call('GET', '/api/health');
+    assert.equal(health.json.demo.adminControlsEnabled, false);
+    assert.equal((await t.call('POST', '/api/demo/simulate-webhook', { orderId: 'ORDER12345' })).status, 403);
+    assert.equal((await t.call('DELETE', '/api/demo')).status, 403);
+  } finally { t.close(); }
+});
+
 
 test('oversized JSON bodies receive a controlled 413 response without destroying the connection', async () => {
   const t = await boot();
