@@ -96,6 +96,19 @@ test('portfolioTriage accurately groups invoices and detects actions', () => {
   assert.equal(triage.items[0].invoiceId, '1');
   assert.equal(triage.items[0].actionable, true);
   assert.equal(triage.items[0].proposedAction, 'send_reminder');
+  assert.deepEqual(triage.totalOverdueByCurrency, { USD: 1500 });
+  assert.equal(Object.hasOwn(triage, 'totalOverdueAmount'), false);
+});
+
+test('portfolioTriage never adds unlike currency amounts into one misleading total', () => {
+  const invoices = [
+    { id: 'usd', client: 'USD Client', number: 'USD-1', amount: 100, currency: 'USD', issueDate: '2026-09-01', dueDate: '2026-10-01', status: 'open', disputed: false },
+    { id: 'inr', client: 'INR Client', number: 'INR-1', amount: 100000, currency: 'INR', issueDate: '2026-09-01', dueDate: '2026-10-01', status: 'open', disputed: false },
+    { id: 'usd2', client: 'USD Client 2', number: 'USD-2', amount: 50, currency: 'USD', issueDate: '2026-09-01', dueDate: '2026-10-02', status: 'open', disputed: false },
+  ];
+  const triage = portfolioTriage(invoices, { today: '2026-10-27', db: { proposals: [] } });
+  assert.deepEqual(triage.totalOverdueByCurrency, { INR: 100000, USD: 150 });
+  assert.equal(Object.hasOwn(triage, 'totalOverdueAmount'), false);
 });
 
 test('API: Portfolio Sweep stages batch proposals and skips duplicates', async () => {
