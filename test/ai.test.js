@@ -48,7 +48,7 @@ test('Gemini 503 falls through to the next configured model', async () => {
 test('Gemini outage falls back to a labelled deterministic draft', async () => {
   const fetchImpl = async () => ({ ok: false, status: 503, json: async () => ({ error: { message: 'busy' } }) });
   const result = await generateDraft({ invoice, assessment, apiKey: 'test', models: ['model-a'], fetchImpl, backoffMs: 0 });
-  assert.match(result.source, /^template \\(AI request failed:/);
+  assert.ok(result.source.startsWith('template (AI request failed:'));
   assert.equal(result.text, templateDraft(invoice, assessment, 'Accounts team'));
 });
 
