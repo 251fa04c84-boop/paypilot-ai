@@ -31,7 +31,8 @@ function createApp(opts = {}) {
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
   // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
-  const demoAdminEnabled = env.ENABLE_DEMO_ADMIN === 'true' || (!isProduction && env.ENABLE_DEMO_ADMIN !== 'false');
+  // Demo-admin controls are development-only. An environment flag must never enable simulated payment settlement in production.
+  const demoAdminEnabled = !isProduction && env.ENABLE_DEMO_ADMIN !== 'false';
   // Public judge workflows mutate the shared demo database. Require an explicit production opt-in.
   // Keep verified PayPal callbacks available even when browser-facing demo mutations are disabled.
   const publicDemoMutationsEnabled = env.ENABLE_PUBLIC_DEMO_MUTATIONS === 'true' || (!isProduction && env.ENABLE_PUBLIC_DEMO_MUTATIONS !== 'false');
