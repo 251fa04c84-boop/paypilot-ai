@@ -10,6 +10,8 @@ const { generateDraft, generateText } = require('./lib/ai');
 const { ACTIONS, APPROVAL_TTL_MS, evaluate, plan, snapshotHash, buildInterpretationPrompt, validateInterpretation, portfolioTriage, processAssistantQuery } = require('./lib/agent');
 const { summarize } = require('./lib/summary');
 const { createLimiter } = require('./lib/ratelimit');
+const { createPostgresRepository, createPgPool } = require('./lib/postgres-repository');
+const { createPostgresStore } = require('./lib/postgres-store');
 
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -22,9 +24,16 @@ function createApp(opts = {}) {
   const port = Number(env.PORT) || 3000;
   const baseUrl = (env.APP_BASE_URL || env.RENDER_EXTERNAL_URL || `http://localhost:${port}`).replace(/\/$/, '');
   const now = opts.now || (() => new Date());
-  const store = opts.store || createStore(env.DATA_FILE || path.join(__dirname, 'data', 'db.json'));
+  const pgMode = env.PG_STORAGE_MODE === 'judge_demo' || Boolean(opts.repository);
+  const pgTenantId = opts.tenantId || env.JUDGE_DEMO_TENANT_ID || '';
+  if (pgMode && !pgTenantId.trim()) throw new Error('JUDGE_DEMO_TENANT_ID is required in PostgreSQL judge-demo mode.');
+  const repository = pgMode
+    ? (opts.repository || createPostgresRepository({ pool: opts.pgPool || createPgPool({ connectionString: env.DATABASE_URL }) }))
+    : null;
+  const store = opts.store || (pgMode
+    ? createPostgresStore({ repository, tenantId: pgTenantId })
+    : createStore(env.DATA_FILE || path.join(__dirname, 'data', 'db.json')));
   const db = store.db;
-  db.processedWebhookEvents = Array.isArray(db.processedWebhookEvents) ? db.processedWebhookEvents : [];
   const paypal = opts.paypal || createPayPal({ clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET });
   const aiFetch = opts.aiFetch || fetch;
   const aiKey = env.GEMINI_API_KEY || '';
@@ -39,7 +48,17 @@ function createApp(opts = {}) {
   const inflight = new Set();
   const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
-  const settings = (db.settings = db.settings || {});
+  const settings = pgMode
+    ? new Proxy(Object.create(null), {
+      get(_target, key) { return db.settings[key]; },
+      set(_target, key, value) { db.settings[key] = value; return true; },
+      ownKeys() { return Reflect.ownKeys(db.settings); },
+      getOwnPropertyDescriptor(_target, key) {
+        if (!Object.prototype.hasOwnProperty.call(db.settings, key)) return undefined;
+        return { configurable: true, enumerable: true, writable: true, value: db.settings[key] };
+      }
+    })
+    : (db.settings = db.settings || {});
   let aiLast = null; // last real AI call outcome, shown as a service-health indicator
   const simFetch = async () => ({ ok: false, status: 503, json: async () => ({ error: { message: 'SIMULATED outage (demo switch)' } }) });
   const simPaypal = { configured: () => true, async createOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); }, async captureOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); } };
@@ -182,7 +201,7 @@ function createApp(opts = {}) {
     routes.push({ method, re, keys, handler });
   };
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
+  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     requireMutableDemo();
@@ -774,7 +793,10 @@ function createApp(opts = {}) {
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
       const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
-      const out = await m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams) });
+      const invoke = () => m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams) });
+      // In PostgreSQL mode every API route executes against the server-configured
+      // judge tenant inside one transaction; clients cannot choose a tenant ID.
+      const out = pgMode ? await store.runInTenant(invoke) : await invoke();
       if (out.redirect) { res.writeHead(302, { Location: out.redirect }); return res.end(); }
       if (out.html) { res.writeHead(out.status || 200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(out.html); }
       if (out.csv) {
@@ -795,17 +817,30 @@ function createApp(opts = {}) {
       res.end(JSON.stringify(Object.assign({ error: status === 500 ? 'Internal error.' : e.message }, e.extra || {})));
     }
   });
-  return { server, port, db, store, seedDemo };
+  return { server, port, db, store, seedDemo, pgMode, repository };
 }
 
 if (require.main === module) {
   const app = createApp();
-  if (app.db.invoices.length === 0) {
-    try {
-      app.seedDemo();
-      console.log('Startup: Automatically seeded demo invoices for judge review.');
-    } catch (_) {}
-  }
-  app.server.listen(app.port, () => console.log(`PayPilot AI listening on port ${app.port}`));
+  (async () => {
+    if (app.pgMode) {
+      // The judge tenant must be provisioned by an administrator before boot.
+      await app.store.runInTenant(async () => {
+        if (app.db.invoices.length === 0) {
+          app.seedDemo();
+          console.log('Startup: Seeded PostgreSQL judge-demo tenant.');
+        }
+      });
+    } else if (app.db.invoices.length === 0) {
+      try {
+        app.seedDemo();
+        console.log('Startup: Automatically seeded demo invoices for judge review.');
+      } catch (_) {}
+    }
+    app.server.listen(app.port, () => console.log(`PayPilot AI listening on port ${app.port}`));
+  })().catch((error) => {
+    console.error('Startup failed:', error.message);
+    process.exitCode = 1;
+  });
 }
 module.exports = { createApp };
