@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install application dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Run application unit tests
         run: node --test test/*.test.js
       - name: Create disposable tenant schema and runtime role
@@ -45,3 +47,7 @@ jobs:
         run: PGPASSWORD="$TEST_RUNTIME_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U paypilot_staging_runtime -d "$PGDATABASE" -f test/postgres-rls.integration.sql
       - name: Verify concurrent writes and cross-connection persistence
         run: bash test/postgres-concurrency.integration.sh
+      - name: Exercise PayPilot HTTP routes against PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgres://paypilot_staging_runtime:test-only-password@localhost:5432/paypilot_test
+        run: node --test test/server-postgres.integration.test.js
