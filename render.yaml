@@ -3,7 +3,7 @@ services:
     name: paypilot-ai
     runtime: node
     plan: free
-    buildCommand: echo "no build step"
+    buildCommand: npm install --omit=dev
     startCommand: node server.js
     healthCheckPath: /api/health
     envVars:
@@ -12,4 +12,10 @@ services:
       - key: PAYPAL_CLIENT_SECRET
         sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PG_STORAGE_MODE
+        value: judge_demo
+      - key: JUDGE_DEMO_TENANT_ID
         sync: false
