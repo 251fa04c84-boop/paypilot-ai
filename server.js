@@ -34,6 +34,7 @@ function createApp(opts = {}) {
     ? createPostgresStore({ repository, tenantId: pgTenantId })
     : createStore(env.DATA_FILE || path.join(__dirname, 'data', 'db.json')));
   const db = store.db;
+  if (!pgMode) db.processedWebhookEvents = Array.isArray(db.processedWebhookEvents) ? db.processedWebhookEvents : [];
   const paypal = opts.paypal || createPayPal({ clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET });
   const aiFetch = opts.aiFetch || fetch;
   const aiKey = env.GEMINI_API_KEY || '';
