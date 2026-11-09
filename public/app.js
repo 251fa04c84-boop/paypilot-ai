@@ -189,9 +189,9 @@ async function viewMission() {
   main.replaceChildren(
     h('section', { class: 'mission-hero' },
       h('div', { class: 'hero-copy' },
-        h('div', { class: 'eyebrow' }, 'PAYPILOT INTELLIGENCE · RECEIVABLES COMMAND CENTER'),
-        h('h2', {}, 'Turn overdue invoices into verified recoveries.'),
-        h('p', {}, 'Prioritise the right account, understand the evidence, approve the next move, and verify payment with PayPal Sandbox.'),
+        h('div', { class: 'eyebrow' }, 'RECEIVABLES / DAILY WORKSPACE'),
+        h('h2', {}, 'See what is overdue. Decide what happens next.'),
+        h('p', {}, 'A practical view of unpaid work, the reasons behind each recommendation, and the next decision waiting for you.'),
         h('div', { class: 'hero-tags' }, pill('ok', 'Rules-led decisions'), pill('warn', 'Human approval required'), pill('none', 'Sandbox payments only'))),
       h('div', { class: 'hero-mark', 'aria-hidden': 'true' }, h('span', { class: 'hero-orbit orbit-one' }), h('span', { class: 'hero-orbit orbit-two' }), h('span', { class: 'hero-core' }, 'P'))),
     h('section', { class: 'command-strip' },
@@ -215,9 +215,9 @@ async function viewMission() {
     h('button', { class: 'primary', onclick: () => switchTab('approvals') }, 'Review approvals')));
   if (all.length > 0) {
     main.append(h('section', { class: 'autopilot-panel' },
-      h('div', { class: 'autopilot-heading' }, h('div', {}, h('div', { class: 'eyebrow' }, 'CONTROLLED AUTONOMY'), h('h3', {}, 'Portfolio Autopilot')),
+      h('div', { class: 'autopilot-heading' }, h('div', {}, h('div', { class: 'eyebrow' }, 'CONTROLLED AUTONOMY'), h('h3', {}, 'Portfolio review')),
         h('span', { class: 'badge ok' }, 'Observe · analyse · propose')),
-      h('p', { class: 'muted' }, 'One sweep evaluates every open invoice, ranks urgency using explainable rules, and stages eligible recovery proposals for your review. Disputes, recent reminders and paid invoices are protected.'),
+      h('p', { class: 'muted' }, 'Review every open invoice against the same published rules. Eligible next steps are prepared for your approval; disputed and recently contacted accounts are held back.'),
       h('div', { class: 'actions' },
         h('button', { class: 'primary', onclick: lock('Scanning portfolio…', async () => {
           const r = await api('POST', '/api/agent/triage/apply');
@@ -415,12 +415,12 @@ function draftCard(d) {
 }
 
 const assistantHistory = [
-  { sender: 'assistant', text: 'Hello! I am PayPilot AI. Ask me about your overdue accounts, recovery risks, disputed invoices, or specific client payment details. All recovery actions require your explicit approval.', source: 'system' },
+  { sender: 'assistant', text: 'Hello. I can help you review overdue accounts, payment status and disputes. I will show the available evidence, and any recovery action still needs your approval.', source: 'system' },
 ];
 
 async function viewAssistant() {
-  main.replaceChildren(h('h2', {}, 'AI Recovery Assistant'),
-    h('p', { class: 'muted' }, 'Conversational agent backed by deterministic verified facts and tool access.'));
+  main.replaceChildren(h('h2', {}, 'Ask about your receivables'),
+    h('p', { class: 'muted' }, 'Ask a question about the invoice records. Answers use the available workspace data; actions still require your approval.'));
 
   const thread = h('div', { class: 'chat-thread' });
   const renderThread = () => {
@@ -451,11 +451,11 @@ async function viewAssistant() {
       h('button', { class: 'primary', type: 'submit' }, 'Ask')));
 
   const quickPills = h('div', { class: 'quick-pills' },
-    h('button', { class: 'btn-pill', onclick: () => ask('What is our total outstanding and overdue amount?') }, '📊 Total Overdue'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Who should I chase today?') }, '🎯 Top Priorities'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Show disputed invoices') }, '⏸️ Disputed Invoices'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Status of Northwind Cafe') }, '☕ Northwind Cafe'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Status of Harbor Dental') }, '🦷 Harbor Dental'));
+    h('button', { class: 'btn-pill', onclick: () => ask('What is our total outstanding and overdue amount?') }, 'Total overdue'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Who should I chase today?') }, 'Today's priorities'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Show disputed invoices') }, 'Disputed invoices'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Status of Northwind Cafe') }, 'Northwind Cafe'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Status of Harbor Dental') }, 'Harbor Dental'));
 
   renderThread();
   main.append(quickPills, thread, form);
