@@ -34,7 +34,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.paypilot_resolve_session(text, timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.paypilot_resolve_order_route(text) FROM PUBLIC;
-DO $
+DO $grant$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_staging_runtime') THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_resolve_session(text, timestamptz) TO paypilot_staging_runtime';
@@ -44,4 +44,4 @@ BEGIN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_resolve_session(text, timestamptz) TO paypilot_runtime';
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_resolve_order_route(text) TO paypilot_runtime';
   END IF;
-END $;
+END $grant$;
