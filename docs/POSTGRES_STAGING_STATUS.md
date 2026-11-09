@@ -5,16 +5,17 @@
 - The tenant ID is server-configured through `JUDGE_DEMO_TENANT_ID`; request headers and bodies cannot select a tenant.
 - A request-local store adapter preserves the existing route business logic without a process-global mutable tenant database.
 - Tenant state updates use a row lock and version-checked JSONB write.
+- Forced-RLS-safe SECURITY DEFINER bootstrap functions resolve a signed session hash and an opaque PayPal order ID; direct table access remains tenant-scoped. The functions expose only the minimum tenant-routing tuple.
 - PayPal order routes and webhook replay records are persisted in the same transaction as tenant state.
 - Render Blueprint now declares the PostgreSQL driver, build install, and required judge-demo environment variables. This is configuration in the PR only; the live Render service has not been changed.
 
 ## Verified in GitHub Actions
 Workflow: [PostgreSQL integration gates](https://github.com/251fa04c84-boop/paypilot-ai/actions/workflows/postgres-integration.yml)
 
-Run `42633265053` passed on commit `9ff6c21f866ff1f38773d02afea12afcbc657463`:
+Run `42633754717` passed on commit `cbd98d1f42d2b33e2ff8ce067f96ce99e0a6cd02`:
 - 130 application tests passed; one environment-gated integration test was skipped in the unit-test pass.
 - PostgreSQL 16 fixture and non-owner runtime role created.
-- RLS migration applied and cross-tenant read/write checks passed.
+- RLS migration and restricted bootstrap lookup functions applied; cross-tenant read/write checks and signed-session/order-ID bootstrap resolution passed.
 - Concurrent row updates and fresh-connection persistence passed.
 - Dedicated real-PostgreSQL HTTP integration passed: tenant A/B route isolation, invoice persistence, PayPal order-route persistence, simultaneous capture requests causing one PayPal capture, duplicate webhook handling, and a new pool/app instance reading persisted state after simulated process restart.
 
