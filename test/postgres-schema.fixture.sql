@@ -17,7 +17,7 @@ CREATE TABLE public.paypilot_paypal_order_routes (
   tenant_id text NOT NULL REFERENCES public.paypilot_tenants(tenant_id),
   invoice_id text NOT NULL,
   proposal_id text,
-  status text NOT NULL DEFAULT 'created',
+  status text NOT NULL DEFAULT 'created' CHECK (status IN ('created','pending','captured','failed','cancelled')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
