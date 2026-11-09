@@ -155,7 +155,7 @@ test('persists order routing and webhook replay keys in the tenant transaction',
   const pool = fakePool({
     state: {
       invoices: [{ id: 'invoice-a' }],
-      orders: [{ orderId: 'order-a', invoiceId: 'invoice-a', proposalId: 'proposal-a', status: 'created' }],
+      orders: [{ orderId: 'order-a', invoiceId: 'invoice-a', proposalId: 'proposal-a', status: 'created' }, { orderId: 'order-pending', invoiceId: 'invoice-a', status: 'pending' }],
       processedWebhookEvents: [{ id: 'event-a', at: '2026-11-09T10:00:00.000Z' }]
     }
   });
@@ -164,6 +164,8 @@ test('persists order routing and webhook replay keys in the tenant transaction',
   const orderInsert = pool.calls.find((x) => x.sql.includes('INSERT INTO paypilot_paypal_order_routes'));
   assert.deepEqual(orderInsert.params, ['order-a', 'tenant-a', 'invoice-a', 'proposal-a', 'created']);
   assert.ok(orderInsert.sql.includes('WHERE paypilot_paypal_order_routes.tenant_id = EXCLUDED.tenant_id'));
+  const pendingInsert = pool.calls.find((x) => x.sql.includes('INSERT INTO paypilot_paypal_order_routes') && x.params[0] === 'order-pending');
+  assert.equal(pendingInsert.params[4], 'pending');
   const eventInsert = pool.calls.find((x) => x.sql.includes('INSERT INTO paypilot_webhook_events'));
   assert.deepEqual(eventInsert.params, ['event-a', 'tenant-a', new Date('2026-11-09T10:00:00.000Z')]);
   assert.ok(eventInsert.sql.includes('ON CONFLICT (event_id) DO NOTHING'));
