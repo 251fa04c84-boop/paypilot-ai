@@ -478,7 +478,7 @@ async function viewAssistant() {
 
   const quickPills = h('div', { class: 'quick-pills' },
     h('button', { class: 'btn-pill', onclick: () => ask('What is our total outstanding and overdue amount?') }, 'Total overdue'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Who should I chase today?') }, 'Today's priorities'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Who should I chase today?') }, "Today's priorities"),
     h('button', { class: 'btn-pill', onclick: () => ask('Show disputed invoices') }, 'Disputed invoices'),
     h('button', { class: 'btn-pill', onclick: () => ask('Status of Northwind Cafe') }, 'Northwind Cafe'),
     h('button', { class: 'btn-pill', onclick: () => ask('Status of Harbor Dental') }, 'Harbor Dental'));
