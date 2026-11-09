@@ -179,14 +179,40 @@ function proposalCard(p) {
 
 // ---------- views ----------
 async function viewMission() {
-  const [q, all, open] = await Promise.all([api('GET', '/api/recovery'), api('GET', '/api/invoices'), api('GET', '/api/proposals?open=1')]);
-  const sum = all.length ? await api('GET', '/api/summary') : [];
+  // Keep the overview useful when a secondary endpoint is unavailable.
+  // Previously Promise.all made one failed proposals request blank the entire page.
+  const errors = [];
+  const [qResult, allResult, proposalsResult] = await Promise.allSettled([
+    api('GET', '/api/recovery'),
+    api('GET', '/api/invoices'),
+    api('GET', '/api/proposals?open=1'),
+  ]);
+  const q = qResult.status === 'fulfilled' && Array.isArray(qResult.value) ? qResult.value : [];
+  const all = allResult.status === 'fulfilled' && Array.isArray(allResult.value) ? allResult.value : [];
+  const open = proposalsResult.status === 'fulfilled' && Array.isArray(proposalsResult.value) ? proposalsResult.value : [];
+  if (qResult.status === 'rejected') errors.push('Recovery queue could not load: ' + qResult.reason.message);
+  if (allResult.status === 'rejected') errors.push('Invoices could not load: ' + allResult.reason.message);
+  if (proposalsResult.status === 'rejected') errors.push('Approval count could not load: ' + proposalsResult.reason.message);
+  let sum = [];
+  if (all.length) {
+    try {
+      const summary = await api('GET', '/api/summary');
+      if (Array.isArray(summary)) sum = summary;
+      else if (summary && typeof summary === 'object' && summary.currency) sum = [summary];
+      else throw new Error('Unexpected summary response format');
+    } catch (e) { errors.push('Financial summary could not load: ' + e.message); }
+  }
   const waiting = open.filter((p) => p.status === 'pending' || p.status === 'approved');
   // Count every overdue open invoice, including disputed ones; disputes are excluded from the active queue but remain part of total exposure.
   const overdueCount = sum.reduce((total, currency) => total + currency.overdueCount, 0);
   const disputedCount = all.filter((i) => i.status === 'open' && i.disputed).length;
   const openCount = all.filter((i) => i.status === 'open').length;
   main.replaceChildren(
+    errors.length ? h('section', { class: 'card warnbox', role: 'status' },
+      h('strong', {}, 'Some overview data is unavailable'),
+      h('ul', { class: 'list' }, errors.map((message) => h('li', {}, message))),
+      h('p', { class: 'muted small' }, 'The rest of the workspace remains available. Try refreshing, or open Invoices and Approvals directly.')
+    ) : null,
     h('section', { class: 'mission-hero' },
       h('div', { class: 'hero-copy' },
         h('div', { class: 'eyebrow' }, 'RECEIVABLES / DAILY WORKSPACE'),
