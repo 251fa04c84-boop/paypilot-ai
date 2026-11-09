@@ -2,7 +2,6 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Pool } = require('pg');
 const { createPostgresRepository } = require('../lib/postgres-repository');
 const { createApp } = require('../server');
 
@@ -18,6 +17,7 @@ async function close(app) {
 }
 
 test('real PostgreSQL HTTP routes isolate tenants, serialize captures, dedupe webhooks, and survive pool restart', integration, async () => {
+  const { Pool } = require('pg');
   const pool1 = new Pool({ connectionString, ssl: false, max: 8 });
   const repo1 = createPostgresRepository({ pool: pool1 });
   const beforeRollback = await repo1.withTenant('rls-test-tenant-a', async (tx) => tx.state.invoices.length);
