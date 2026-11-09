@@ -22,6 +22,10 @@ function fakePool({
       if (sql.includes('SELECT state, version FROM paypilot_tenant_state')) return { rows: [{ state, version }] };
       if (sql.includes('UPDATE paypilot_tenant_state')) return { rows: [{ version: version + 1 }] };
       if (sql.includes('INSERT INTO paypilot_paypal_order_routes')) return { rows: orderInserted ? [{ order_id: params[0] }] : [] };
+      if (sql.includes('INSERT INTO paypilot_webhook_events')) return { rows: webhookInserted ? [{ event_id: params[0] }] : [] };
+      if (sql.includes('UPDATE paypilot_webhook_events')) return { rows: webhookProcessed ? [{ event_id: params[0] }] : [] };
+      if (sql.includes('INSERT INTO paypilot_sessions')) return { rows: [{ session_hash: params[0] }] };
+      if (sql.includes('UPDATE paypilot_sessions')) return { rows: [{ session_hash: params[0] }] };
       return { rows: [] };
     },
     release() { calls.push({ scope: 'client', sql: 'RELEASE' }); }
@@ -31,10 +35,8 @@ function fakePool({
     async connect() { return client; },
     async query(sql, params = []) {
       calls.push({ scope: 'pool', sql, params });
-      if (sql.includes('SELECT s.tenant_id FROM paypilot_sessions')) return { rows: session ? [{ tenant_id: session.tenantId }] : [] };
-      if (sql.includes('INSERT INTO paypilot_webhook_events')) return { rows: webhookInserted ? [{ event_id: params[0] }] : [] };
-      if (sql.includes('UPDATE paypilot_webhook_events')) return { rows: webhookProcessed ? [{ event_id: params[0] }] : [] };
-      if (sql.includes('SELECT order_id, tenant_id, invoice_id, proposal_id, status')) {
+      if (sql.includes('paypilot_resolve_session')) return { rows: session ? [{ tenant_id: session.tenantId }] : [] };
+      if (sql.includes('paypilot_resolve_order_route')) {
         return { rows: [{ order_id: params[0], tenant_id: 'tenant-a', invoice_id: 'invoice-a', proposal_id: null, status: 'created' }] };
       }
       return { rows: [] };
@@ -103,7 +105,7 @@ test('looks up a PayPal order route by parameterized order ID', async () => {
   assert.equal(route.tenant_id, 'tenant-a');
   const query = pool.calls.find((x) => x.sql.includes('SELECT order_id, tenant_id'));
   assert.deepEqual(query.params, ['order-1']);
-  assert.ok(query.sql.includes('WHERE order_id = $1'));
+  assert.ok(query.sql.includes('paypilot_resolve_order_route($1)'));
 });
 
 test('records webhook event idempotently and hashes the original payload', async () => {
@@ -117,17 +119,17 @@ test('records webhook event idempotently and hashes the original payload', async
   assert.ok(insert.sql.includes('ON CONFLICT (event_id) DO NOTHING'));
 
   const duplicate = createPostgresRepository({ pool: fakePool({ webhookInserted: false }) });
-  assert.equal(await duplicate.recordWebhook({ eventId: 'evt-1', eventType: 'PAYMENT.CAPTURE.COMPLETED', payload }), false);
+  assert.equal(await duplicate.recordWebhook({ eventId: 'evt-1', tenantId: 'tenant-a', eventType: 'PAYMENT.CAPTURE.COMPLETED', payload }), false);
 });
 
 test('only allows supported webhook terminal states and marks received events once', async () => {
   const pool = fakePool();
   const repo = createPostgresRepository({ pool, clock: () => new Date('2026-11-08T00:00:00Z') });
-  assert.equal(await repo.markWebhookProcessed('evt-1', 'processed'), true);
+  assert.equal(await repo.markWebhookProcessed('evt-1', 'tenant-a', 'processed'), true);
   const update = pool.calls.find((x) => x.sql.includes('UPDATE paypilot_webhook_events'));
   assert.deepEqual(update.params, ['evt-1', 'processed', new Date('2026-11-08T00:00:00Z'), null]);
   assert.ok(update.sql.includes("status = 'received'"));
-  await assert.rejects(() => repo.markWebhookProcessed('evt-2', 'anything'), /Invalid webhook status/);
+  await assert.rejects(() => repo.markWebhookProcessed('evt-2', 'tenant-a', 'anything'), /Invalid webhook status/);
 });
 
 test('session lookup rejects malformed hashes and returns only an active tenant ID', async () => {
@@ -136,10 +138,9 @@ test('session lookup rejects malformed hashes and returns only an active tenant 
   assert.equal(await repo.resolveSession('bad-hash'), null);
   assert.equal(pool.calls.length, 0);
   assert.deepEqual(await repo.resolveSession(validHash), { tenantId: 'tenant-a' });
-  const query = pool.calls.find((x) => x.sql.includes('SELECT s.tenant_id'));
+  const query = pool.calls.find((x) => x.sql.includes('paypilot_resolve_session'));
   assert.deepEqual(query.params[0], validHash);
-  assert.ok(query.sql.includes('revoked_at IS NULL'));
-  assert.ok(query.sql.includes("t.status = 'active'"));
+  assert.ok(query.sql.includes('paypilot_resolve_session($1, $2)'));
 });
 
 test('session creation rejects malformed hashes before writing', async () => {
