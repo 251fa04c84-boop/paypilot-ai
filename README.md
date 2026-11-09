@@ -1,6 +1,7 @@
 # PayPilot AI — an auditable agent for invoice recovery
 
-**Live demo:** https://paypilot-ai-1qw8.onrender.com/  
+**Judge preview (PostgreSQL-backed):** https://paypilot-ui-preview.onrender.com/  
+**Original production service:** https://paypilot-ai-1qw8.onrender.com/  
 **Source:** https://github.com/251fa04c84-boop/paypilot-ai  
 **Hackathon:** PayPal AI Hackathon 2026
 
@@ -8,7 +9,7 @@ PayPilot AI is an evidence-first receivables recovery agent for small businesses
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
 > **Restricted demo:** there is no login or tenant isolation. Production browser-facing mutations are disabled by default; set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` only when intentionally opening the shared judge workflow. Invoice create/edit/delete/manual settlement remain disabled in production regardless. Verified PayPal capture and signed webhook endpoints remain available. Use only included demo data; do not enter real customer or financial information.  
-> **Storage:** invoice and audit data use a local JSON file. On ephemeral/free hosting, data can reset when the service restarts. This is a hackathon demo, not a production accounting system.
+> **Deployment distinction:** the judge preview is deployed from `codex/paypilot-human-crafted-ui` and reports PostgreSQL tenant-scoped storage. The original production service is a separate deployment; do not assume both services run the same commit or storage configuration. The public judge preview is still a shared, no-login demo tenant—not private per-user workspaces. This is a hackathon demo, not production accounting software.
 
 ### Public demo mutation switch
 
