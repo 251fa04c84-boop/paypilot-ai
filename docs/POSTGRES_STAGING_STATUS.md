@@ -17,3 +17,8 @@ Connected as `paypilot_staging_runtime`, set `app.tenant_id=rls-test-tenant-a`, 
 - the final SELECT still returned only tenant A.
 
 The companion SQL assertion file is `test/postgres-rls.integration.sql`. It expects the two named fixture tenants to exist and runs inside a rollback-only transaction.
+
+## CI verification
+GitHub Actions workflow `PostgreSQL integration gates` completed successfully on commit `0d480148558cb2a9eadb99677529718dcca98458` (run 42612569190). It started a disposable PostgreSQL 16 service, created a non-owner/no-BYPASSRLS role, applied the migration, ran RLS isolation assertions, then ran two concurrent writes and verified the committed version from a fresh connection. The existing Node unit suite also passed in that run.
+
+This verifies the migration and database isolation/concurrency primitives. It does not yet exercise PayPilot HTTP routes, PayPal capture/webhook races, or an actual Render process restart.
