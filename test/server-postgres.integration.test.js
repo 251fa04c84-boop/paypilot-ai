@@ -20,6 +20,14 @@ async function close(app) {
 test('real PostgreSQL HTTP routes isolate tenants, serialize captures, dedupe webhooks, and survive pool restart', integration, async () => {
   const pool1 = new Pool({ connectionString, ssl: false, max: 8 });
   const repo1 = createPostgresRepository({ pool: pool1 });
+  const beforeRollback = await repo1.withTenant('rls-test-tenant-a', async (tx) => tx.state.invoices.length);
+  await assert.rejects(() => repo1.withTenant('rls-test-tenant-a', async (tx) => {
+    tx.state.invoices.push({ id: 'must-rollback', client: 'Rollback fixture' });
+    await tx.save();
+    throw new Error('simulated failed rollout transaction');
+  }), /simulated failed rollout transaction/);
+  const afterRollback = await repo1.withTenant('rls-test-tenant-a', async (tx) => tx.state.invoices.length);
+  assert.equal(afterRollback, beforeRollback, 'a failed transaction must not leave partially persisted application state');
   let captures = 0;
   const paypal = {
     configured: () => true,
