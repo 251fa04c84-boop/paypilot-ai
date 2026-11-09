@@ -81,6 +81,7 @@ test('rejects tenantless repository operations and invalid tenant kinds', async 
   const repo = createPostgresRepository({ pool: fakePool() });
   await assert.rejects(() => repo.withTenant('', async () => null), TenantNotFoundError);
   await assert.rejects(() => repo.createTenant({ tenantId: 'x', kind: 'admin' }), /tenant kind/);
+  await assert.rejects(() => repo.createTenant({ tenantId: 'tenant-new' }), /separate administrator pool/);
 });
 
 test('registers PayPal order routes inside a tenant transaction and rejects duplicate order IDs', async () => {
