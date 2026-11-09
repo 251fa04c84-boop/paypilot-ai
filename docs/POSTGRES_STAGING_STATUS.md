@@ -12,12 +12,12 @@
 ## Verified in GitHub Actions
 Workflow: [PostgreSQL integration gates](https://github.com/251fa04c84-boop/paypilot-ai/actions/workflows/postgres-integration.yml)
 
-Run `42633754717` passed on commit `cbd98d1f42d2b33e2ff8ce067f96ce99e0a6cd02`:
+Run `42634858795` passed on commit `24a36d43729d1b7a221a1a3a5df38315f4b046eb`:
 - 130 application tests passed; one environment-gated integration test was skipped in the unit-test pass.
 - PostgreSQL 16 fixture and non-owner runtime role created.
-- RLS migration and restricted bootstrap lookup functions applied; cross-tenant read/write checks and signed-session/order-ID bootstrap resolution passed.
+- RLS migration, restricted bootstrap lookup functions, and pending PayPal order-status migration applied; cross-tenant read/write checks and signed-session/order-ID bootstrap resolution passed.
 - Concurrent row updates and fresh-connection persistence passed.
-- Dedicated real-PostgreSQL HTTP integration passed: tenant A/B route isolation, invoice persistence, PayPal order-route persistence, simultaneous capture requests causing one PayPal capture, duplicate webhook handling, and a new pool/app instance reading persisted state after simulated process restart.
+- Dedicated real-PostgreSQL HTTP integration passed: transaction rollback leaves no partial state, tenant A/B route isolation, invoice persistence, PayPal order-route persistence, simultaneous capture requests causing one PayPal capture, duplicate webhook handling, and a new pool/app instance reading persisted state after simulated process restart.
 
 ## Verified on isolated Neon staging
 Branch: `paypilot-upgrade-staging` (`br-soft-mountain-a1yhgu3p`).
