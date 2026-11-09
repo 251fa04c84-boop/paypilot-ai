@@ -843,5 +843,11 @@ if (require.main === module) {
     console.error('Startup failed:', error.message);
     process.exitCode = 1;
   });
+  const shutdown = async () => {
+    if (app.server.listening) await new Promise((resolve) => app.server.close(resolve));
+    if (app.store && typeof app.store.close === 'function') await app.store.close();
+  };
+  process.once('SIGTERM', () => { shutdown().catch((error) => console.error('Shutdown failed:', error.message)); });
+  process.once('SIGINT', () => { shutdown().catch((error) => console.error('Shutdown failed:', error.message)); });
 }
 module.exports = { createApp };
