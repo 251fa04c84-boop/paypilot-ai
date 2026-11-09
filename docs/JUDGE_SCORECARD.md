@@ -86,3 +86,81 @@ PayPilot should not claim that no competitor has a real Sandbox integration. Set
 5. Approve a reminder draft and explain that the operator sends it outside PayPilot.
 6. Start a PayPal Sandbox checkout, complete it with a Sandbox buyer, then show server-verified capture and the audit trail.
 7. Close with the differentiator: prioritise with evidence, approve with control, verify the money.
+
+
+## Broader market benchmark — 9 November 2026
+
+This comparison uses public product material and a recent comparative review. Vendor feature claims are not independent proof of outcomes. PayPilot is a hackathon prototype with a public shared demo; the commercial products below are established products with substantially broader integration and operating scope.
+
+### Category-by-category comparison
+
+| Category | Market benchmark | PayPilot today | Gap / practical decision |
+|---|---|---|---|
+| Invoice prioritisation | Upflow, Tesorio and enterprise AR tools combine portfolio context, workflow and risk views | Explainable deterministic urgency score; currency-neutral; portfolio queue | **Competitive core.** Keep the score explainable; add promise/dispute context only when recorded and traceable |
+| AI collections communication | Upflow/Tesorio offer configurable agent actions; Chaser focuses on drafts and human approval | Gemini explains verified facts and drafts reminders; user sends externally | **Gap.** No inbox/email/SMS integration or reply ingestion. Do not claim autonomous collections |
+| Promise-to-pay tracking | Leading AR workflows identify payment promises and escalate missed commitments | No structured promise date/status; analysis explicitly says reply/promise is unknown | **High-value gap.** Add a human-recorded promise-to-pay field and missed-promise queue before attempting mailbox automation |
+| Dispute management | Commercial suites track disputes and resolution workflows | Disputed flag and note pause collection; audit events | **Partial.** Add structured reason, owner, next-review date and resolution note; preserve human control |
+| Payment acceptance | Competitors often provide customer payment portals and multiple payment rails | PayPal Sandbox checkout only | **Major breadth gap.** Keep PayPal as the verified rail for this prototype; design an adapter boundary before adding Stripe/ACH/UPI. Do not pretend multi-rail support exists |
+| Cash application / reconciliation | Upflow, Tesorio, Kolleno and Gaviti automate matching of incoming cash to invoices, including remittance exceptions | Verifies one PayPal order capture against invoice reference, amount and currency | **Major gap.** No bank-feed/remittance ingestion, partial payment, fee allocation or multi-invoice matching. Defer broad reconciliation until there is a safe source of real transaction data |
+| Cash forecasting | Tesorio and Kolleno market AR-based cash forecasts | Currency-grouped outstanding/overdue arithmetic; no arrival forecast | **Gap.** Add transparent scenario totals only if they are deterministic and label assumptions; do not invent payment probabilities |
+| Accounting / ERP / CRM integrations | Upflow, Tesorio and Kolleno advertise multiple ERP, accounting, CRM, email and bank connections | PayPal Sandbox and internal demo records; no verified QuickBooks/Xero/NetSuite sync | **Major gap.** Build one useful integration end-to-end rather than a fake connector gallery. Prioritise CSV import/export first, then a real accounting integration |
+| Customer self-service | Commercial tools offer customer payment portals and invoice status/history | No authenticated customer portal; hosted demo is intentionally no-login and shared | **Gap.** Do not add customer login until request-scoped tenancy and access controls are complete |
+| Agent governance | Upflow documents per-skill allow/approval/block controls and recorded agent runs; Tesorio markets controls and governance | Allowlisted actions, human approval, snapshot revalidation, dispute blocks, audit trail | **Strong differentiator.** Expand from global fixed policy to explicit per-action policy only after secure identity/tenant boundaries exist |
+| Payment security | PayPal requires server-side OAuth, HTTPS, secret protection and webhook signature verification | Server-side credentials, Sandbox-only integration, capture validation and signature-verification path | **Good foundation.** Still need deployed negative tests, durable event idempotency and tenant-bound order routing before production |
+| Reliability / operations | Mature platforms need retries, observability, incident response, backups and reconciliation | Node test suite, health endpoint, bounded API rate limits; Render free service may sleep | **Partial.** Add request IDs/structured redacted logs, backup/restore drill, alerting and persistent webhook state |
+| Data isolation / identity | Commercial systems require tenant-scoped users, roles and auditability | Public judge demo deliberately has no login; signed-session/Postgres foundations are not wired into request handling | **Critical production gap.** Do not store real business data or claim multi-tenancy yet |
+| UX / accessibility | Commercial tools offer role-based work queues, customer context and reporting | Mobile-first Mission Control, invoice detail, approvals, assistant, activity export | **Promising prototype.** Add clear empty/error states, keyboard/screen-reader checks and a first-run guide |
+| Analytics / ROI proof | Mature tools show DSO, collection effectiveness, cash application rates and operational savings | Basic portfolio arithmetic; no real customer cohort or outcome evidence | **Gap.** Instrument triage time, approved follow-up, verified recovery and dispute safety; report only measured pilot results |
+| Pricing / target segment | Many established products target mid-market/enterprise and may require demos or quote-based plans | No paid plan or customer validation | **Opportunity, not a feature gap.** Stay focused on freelancers and small service businesses; test willingness to pay before building enterprise complexity |
+
+### Direct hackathon-project comparison
+
+The earlier Devpost comparison remains relevant: Unstuck is close to the recovery workflow; Kioku has broader owner-approved invoice/payment actions and an AG Grid experience; SettleSight and ReconPilot lean more heavily into reconciliation and transaction analysis. Their public descriptions are competitor claims, not independent security audits. PayPilot should not copy their breadth at the expense of its strongest evidence-backed workflow.
+
+### Competitive scorecard (qualitative, not a judge score)
+
+| Dimension | PayPilot position | Evidence / confidence |
+|---|---|---|
+| Recovery-specific workflow | Strong | Implemented triage, proposal, approval, execution and audit path |
+| AI usefulness | Moderate | Gemini interpretation is configured; fresh live response must be separately verified |
+| Human control / explainability | Strong | Deterministic eligibility, allowlisted actions, approval snapshot and dispute blocks |
+| Payment proof | Strong prototype capability | Historical Sandbox capture evidence and server-side checks; current live flow still needs a fresh end-to-end run |
+| Integration breadth | Weak | PayPal Sandbox only; no verified accounting/CRM/bank connectors |
+| Cash application / forecasting | Weak | No remittance matching or predictive forecast |
+| Dispute and promise workflows | Partial | Dispute pause exists; promise-to-pay and structured case resolution do not |
+| Security / tenancy | Incomplete for real customers | Public shared demo is explicitly no-login; request-scoped tenant auth not complete |
+| Reliability / observability | Moderate prototype | CI and health check exist; production-grade alerting/restore/queue operations not proven |
+| Customer validation / ROI | Not yet evidenced | No measured real-customer pilot |
+
+### Ranked improvement plan
+
+**P0 — protect the product and make the demo trustworthy**
+1. Keep the public judge demo separate from any future private tenant data.
+2. Complete signed-session login/logout, request-scoped tenant context, RLS enforcement and cross-tenant tests before accepting real customer data.
+3. Make webhook event claims and PayPal order-to-tenant routing durable and atomic; test replay, concurrent delivery, unknown order and mismatched invoice.
+4. Re-run the actual Sandbox buyer approval → capture → webhook → audit path on the currently deployed preview. Do not infer it from configuration or unit tests.
+
+**P1 — close the highest-value workflow gaps without fake integrations**
+5. Add manually recorded promise-to-pay date, source, and status; automatically pause routine reminders until the promised date and flag missed promises for human review.
+6. Upgrade disputes into a small case workflow: reason, owner, next-review date, resolution note and full audit history. Never auto-clear a dispute.
+7. Add a deterministic expected-cash view grouped by currency with explicit scenarios and no ML payment-probability claims.
+8. Add robust CSV import/export with preview, validation, duplicate detection and a reversible import log before building expensive accounting connectors.
+
+**P2 — expand only when the foundation is proven**
+9. Add one accounting connector (start with the target customers' most common system) with read-only sync first, then carefully scoped write-back.
+10. Add customer-facing payment status and secure portal only after tenancy, roles and access controls pass.
+11. Add inbox/email integration only with explicit mailbox authorization, source-linked extracted replies and human review for disputes/promises.
+12. Add a second payment rail only behind a provider adapter and a shared idempotent payment state machine.
+
+### Sources used for this market benchmark
+
+- [Upflow's 2026 AI agents comparison](https://upflow.io/blog/accounting-software/accounts-receivable-ai-agents) — useful feature-level comparison of Upflow, Chaser, Gaviti, Kolleno, Paraglide, Quadient, Stuut, Tesorio and Versapay. It is published by a market participant, so treat its comparative ratings and competitor commentary as interested-party analysis.
+- [Kolleno product overview](https://www.kolleno.com/) — vendor-described collections, payments, cash application, disputes, credit risk, forecasting and security controls.
+- [Tesorio product overview](https://www.tesorio.com/) — vendor-described collections, cash application, supplier portal agents, forecasting, MCP and governance.
+- [PayPal developer security guidelines](https://developer.paypal.com/security-guidelines) and [webhook integration guide](https://developer.paypal.com/api/rest/webhooks/rest/) — primary-source security requirements for OAuth, secret handling, HTTPS and webhook verification.
+- [G2's 2026 AR software evaluation](https://learn.g2.com/best-accounts-receivable-software) — buyer-relevant criteria including payment methods, portals, integrations, reconciliation, reporting and pricing.
+- [Software Advice AR buyer research](https://www.softwareadvice.com/accounting/accounts-receivable-comparison/) — recurring buyer pain around manual workflows, integration limits, payment-method flexibility and ERP cost/complexity.
+
+### What this benchmark does not prove
+
+It does not establish that any vendor's marketing claims work for every customer, that competitor code is more secure, or that PayPilot will win a hackathon. The ratings above describe relative product coverage from publicly available information, not a laboratory benchmark. Re-check vendor features and hackathon rules before making public comparative claims.
