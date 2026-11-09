@@ -19,3 +19,5 @@ services:
         value: judge_demo
       - key: JUDGE_DEMO_TENANT_ID
         sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
