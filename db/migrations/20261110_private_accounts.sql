@@ -6,11 +6,11 @@ CREATE TABLE IF NOT EXISTS public.paypilot_users (
   user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL UNIQUE REFERENCES public.paypilot_tenants(tenant_id) ON DELETE CASCADE,
   email TEXT NOT NULL,
-  normalized_email TEXT NOT NULL UNIQUE,
+  email_normalized TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL CHECK (length(password_hash) BETWEEN 40 AND 300),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (normalized_email = lower(trim(normalized_email)))
+  CHECK (email_normalized = lower(trim(email_normalized)))
 );
 
 ALTER TABLE public.paypilot_sessions

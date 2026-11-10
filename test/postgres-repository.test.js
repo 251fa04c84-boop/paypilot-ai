@@ -77,6 +77,9 @@ test('account provisioning is atomic and checks separate admin/runtime permissio
   assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_tenants')));
   assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_tenant_state')));
   assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_users')));
+  const userInsert = adminCalls.find((x) => x.sql.includes('INSERT INTO paypilot_users'));
+  assert.match(userInsert.sql, /email_normalized/);
+  assert.doesNotMatch(userInsert.sql, /normalized_email(?![a-z_])/);
   assert.ok(adminCalls.some((x) => x.sql === 'COMMIT'));
 });
 
