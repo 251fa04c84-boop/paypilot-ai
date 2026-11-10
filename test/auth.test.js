@@ -121,6 +121,29 @@ test('registration throttles repeated attempts for the same identity', async () 
   });
 });
 
+test('production keeps shared demo read-only while allowing authenticated private writes', async () => {
+  const repository = fixture();
+  const app = createApp({ repository, tenantId: 'judge-demo', env: { NODE_ENV: 'production', PORT: '0', SESSION_SECRET: 'test-session-secret-which-is-longer-than-32-bytes' } });
+  await withServer(app, async (base) => {
+    const register = await fetch(base + '/api/auth/register', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'private@example.com', password: 'correct horse battery staple' })
+    });
+    assert.equal(register.status, 201);
+    const cookie = register.headers.get('set-cookie').split(';')[0];
+    const privateWrite = await fetch(base + '/api/invoices', {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ client: 'Private customer', number: 'PR-1', amount: 25, currency: 'USD', issueDate: '2026-11-01', dueDate: '2026-11-20' })
+    });
+    assert.equal(privateWrite.status, 201);
+    const publicWrite = await fetch(base + '/api/invoices', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ client: 'Shared demo customer', number: 'D-1', amount: 25, currency: 'USD', issueDate: '2026-11-01', dueDate: '2026-11-20' })
+    });
+    assert.equal(publicWrite.status, 403);
+  });
+});
+
 test('account routes fail closed when session signing is not configured', async () => {
   const repository = fixture();
   const app = createApp({ repository, tenantId: 'judge-demo', env: { NODE_ENV: 'test', PORT: '0' } });
