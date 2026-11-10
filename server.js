@@ -1,5 +1,6 @@
 'use strict';
 const http = require('http');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('./lib/password');
 const { COOKIE_NAME, createSessionToken, readCookie, serializeSessionCookie, clearSessionCookie } = require('./lib/session');
@@ -23,6 +24,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 class HttpError extends Error { constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; } }
 
 function createApp(opts = {}) {
+  const requestContext = new AsyncLocalStorage();
   const env = opts.env || process.env;
   const isProduction = env.NODE_ENV === 'production' || env.RENDER === 'true';
   const port = Number(env.PORT) || 3000;
@@ -105,7 +107,7 @@ function createApp(opts = {}) {
   const find = (list, id, label) => { const x = list.find((i) => i.id === id); if (!x) throw new HttpError(404, `${label} not found.`); return x; };
   const withA = (inv) => Object.assign({}, inv, { assessment: P.assess(inv, todayStr()) });
   const requireMutableDemo = () => {
-    if (isProduction) throw new HttpError(403, 'Invoice editing is disabled on the public demo. Use the supplied judge scenarios.');
+    if (isProduction && requestContext.getStore()?.kind !== 'private') throw new HttpError(403, 'Invoice editing is disabled on the shared public demo. Sign in to use a private workspace.');
   };
 
   function cleanInvoice(b, base = {}) {
@@ -268,7 +270,7 @@ function createApp(opts = {}) {
     return { json: { user: { id: context.userId }, tenantId: context.tenantId } };
   });
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: authEnabled, sessionTtlSeconds: 604800 }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
+  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: authEnabled ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: authEnabled, sessionTtlSeconds: 604800 }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     requireMutableDemo();
@@ -858,8 +860,8 @@ function createApp(opts = {}) {
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
       const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
       const authPath = url.pathname.startsWith('/api/auth/');
-      const invoke = () => m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams), req });
       let tenantContext = judgeContext;
+      const invoke = () => requestContext.run(tenantContext, () => m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams), req }));
       if (pgMode && !authPath) {
         const sessionCookie = readCookie(req.headers.cookie || '', COOKIE_NAME);
         if (sessionCookie) {
