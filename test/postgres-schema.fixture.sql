@@ -41,9 +41,10 @@ CREATE TABLE public.paypilot_webhook_events (
   error_code text
 );
 CREATE ROLE paypilot_staging_runtime LOGIN PASSWORD 'test-only-password' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-GRANT USAGE ON SCHEMA public TO paypilot_staging_runtime;
+CREATE ROLE paypilot_account_provisioner LOGIN PASSWORD 'test-only-provisioner' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+GRANT USAGE ON SCHEMA public TO paypilot_staging_runtime, paypilot_account_provisioner;
 GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO paypilot_staging_runtime;
-INSERT INTO public.paypilot_tenants (tenant_id,tenant_kind) VALUES ('rls-test-tenant-a','private'),('rls-test-tenant-b','private');
+INSERT INTO public.paypilot_tenants (tenant_id,tenant_kind) VALUES ('rls-test-tenant-a','judge_demo'),('rls-test-tenant-b','judge_demo');
 INSERT INTO public.paypilot_tenant_state (tenant_id,state,version) VALUES
  ('rls-test-tenant-a','{"invoices":[{"id":"invoice-a","client":"Tenant A fixture","number":"A-001","amount":125,"currency":"USD","issueDate":"2026-11-01","dueDate":"2026-11-15","status":"open","disputed":false}]}'::jsonb,0),
  ('rls-test-tenant-b','{"invoices":[{"id":"invoice-b","client":"Tenant B fixture","number":"B-001","amount":250,"currency":"USD","issueDate":"2026-11-01","dueDate":"2026-11-16","status":"open","disputed":false}]}'::jsonb,0);
