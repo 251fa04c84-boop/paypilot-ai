@@ -853,9 +853,6 @@ function createApp(opts = {}) {
           }
         }
       }
-      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
-        throw new HttpError(403, 'Interactive demo actions are disabled on this public deployment.');
-      }
       const blocked = checkLimits(req, url.pathname);
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
