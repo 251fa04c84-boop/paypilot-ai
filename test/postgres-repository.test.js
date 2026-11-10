@@ -74,6 +74,7 @@ test('account provisioning is atomic and checks separate admin/runtime permissio
   const user = await repo.createAccount({ tenantId: 'acct_test-uuid', email: 'person@example.com', normalizedEmail: 'person@example.com', passwordHash: 'hash-value-that-is-long-enough-for-test' });
   assert.deepEqual(user, { userId: 'user-uuid', tenantId: 'acct_test-uuid', email: 'person@example.com' });
   assert.ok(adminCalls.some((x) => x.sql === 'BEGIN'));
+  assert.ok(adminCalls.some((x) => x.sql.includes("set_config('app.tenant_id'") && x.params[0] === 'acct_test-uuid'));
   assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_tenants')));
   assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_tenant_state')));
   assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_users')));
