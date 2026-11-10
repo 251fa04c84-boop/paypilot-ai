@@ -30,7 +30,7 @@ test('password reset updates the actual password_updated_at column and revokes s
   const passwordUpdate = calls.find((call) => call.sql.includes('UPDATE paypilot_users SET password_hash'));
   assert.ok(passwordUpdate, 'password hash update must execute');
   assert.match(passwordUpdate.sql, /password_updated_at\s*=\s*now\(\)/);
-  assert.doesNotMatch(passwordUpdate.sql, /updated_at\s*=\s*now\(\)/);
+  assert.doesNotMatch(passwordUpdate.sql, /(?:^|,\s*)updated_at\s*=\s*now\(\)/);
   assert.deepEqual(passwordUpdate.params, ['user-1', 'scrypt$16384$8$1$' + 'b'.repeat(32) + '$' + 'c'.repeat(128)]);
   assert.ok(calls.some((call) => call.sql.includes('UPDATE paypilot_password_resets SET consumed_at')));
   assert.ok(calls.some((call) => call.sql.includes('UPDATE paypilot_sessions SET revoked_at')));
