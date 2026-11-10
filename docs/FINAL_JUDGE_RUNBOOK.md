@@ -34,8 +34,8 @@ Open Activity and show the timeline/export. State clearly that the app demonstra
 | PayPal checkout | Capture order creation, Sandbox buyer approval, return, capture ID and verified invoice state | Retest required; user previously reported a pre-login Sandbox checkout error |
 | Webhook | Save a real Sandbox webhook delivery and successful signature-verification evidence | Do not substitute mocked unit tests |
 | Tenant isolation | Save real PostgreSQL cross-tenant read/write, session routing and restart/concurrency test results | PR #41 PostgreSQL integration job passed against disposable PostgreSQL 16: RLS tenant isolation, concurrent writes/persistence, and HTTP isolation/capture/webhook/restart integration passed; [PostgreSQL run](https://github.com/251fa04c84-boop/paypilot-ai/actions/runs/42779558831) |
-| AI behaviour | Capture a factual answer, an unavailable-provider fallback and prompt-injection handling | Run against the exact deployed commit |
-| Performance | Record cold-start and warm-request timings plus any Render errors | Not yet measured systematically |
+| AI behaviour | Capture a factual answer, an unavailable-provider fallback and prompt-injection handling | Automated tests on PR #41 cover untrusted invoice-note injection, validated drafts/interpretations, Gemini 503 fallback, labelled AI outage behaviour and deterministic rules remaining available. Preview health last reported a successful Gemini call at 07:42 UTC; a fresh live prompt walkthrough on the release deployment is still required |
+| Performance | Record cold-start and warm-request timings plus any Render errors | Read-only preview fetch samples: health 975 ms, homepage 328 ms; Render CPU/memory series available, but HTTP latency/request-count metrics returned no data. These are single samples, not a cold/warm benchmark; repeat after waking the free-tier service |
 
 ## Release gates — do not claim complete until verified
 1. Run `npm test` and CI on the exact candidate commit. PR #41 currently has passing merge-ref checks; rerun after any further commit and again on the final merge commit.
