@@ -69,6 +69,19 @@ test('registration, login, logout and private tenant routing work without trusti
     const privateTenant = identity.tenantId;
     assert.equal(repository.states.get(privateTenant).invoices.length, 1);
 
+    const secondRegister = await fetch(base + '/api/auth/register', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'second@example.com', password: 'another secure passphrase' })
+    });
+    assert.equal(secondRegister.status, 201);
+    const secondCookie = secondRegister.headers.get('set-cookie').split(';')[0];
+    const secondInvoices = await fetch(base + '/api/invoices', { headers: { cookie: secondCookie } });
+    assert.equal(secondInvoices.status, 200);
+    assert.deepEqual(await secondInvoices.json(), []);
+
+    const invalidSession = await fetch(base + '/api/invoices', { headers: { cookie: 'pp_session=not-a-valid-session' } });
+    assert.equal(invalidSession.status, 401);
+
     const publicDemo = await fetch(base + '/api/invoices');
     assert.equal(publicDemo.status, 200);
     assert.deepEqual(await publicDemo.json(), []);
@@ -90,6 +103,21 @@ test('registration, login, logout and private tenant routing work without trusti
     assert.equal(logout.status, 200);
     const afterLogout = await fetch(base + '/api/auth/me', { headers: { cookie: loginCookie } });
     assert.equal(afterLogout.status, 401);
+  });
+});
+
+test('registration throttles repeated attempts for the same identity', async () => {
+  const repository = fixture();
+  const app = createApp({ repository, tenantId: 'judge-demo', limits: { authIdentity: 1 }, env: { NODE_ENV: 'test', PORT: '0', SESSION_SECRET: 'test-session-secret-which-is-longer-than-32-bytes' } });
+  await withServer(app, async (base) => {
+    const submit = () => fetch(base + '/api/auth/register', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'limited@example.com', password: 'correct horse battery staple' })
+    });
+    assert.equal((await submit()).status, 201);
+    const limited = await submit();
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) > 0);
   });
 });
 
