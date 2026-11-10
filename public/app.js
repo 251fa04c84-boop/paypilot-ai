@@ -49,13 +49,20 @@ async function loadAccount() {
   }
   accountButtonState();
 }
-function openAccountPanel(mode = 'login') {
-  const title = mode === 'register' ? 'Create your private workspace' : mode === 'account' ? 'Your private workspace' : 'Sign in to PayPilot';
+function openAccountPanel(mode = 'login', resetToken = '') {
+  const title = mode === 'register' ? 'Create your private workspace'
+    : mode === 'account' ? 'Your private workspace'
+    : mode === 'forgot' ? 'Reset your password'
+    : mode === 'reset' ? 'Choose a new password' : 'Sign in to PayPilot';
   const description = mode === 'register'
     ? 'Create a separate workspace for your invoices. Use at least 12 characters for your password.'
     : mode === 'account'
       ? 'Your records are loaded from the tenant linked to your signed-in account.'
-      : 'Sign in to open your private invoices and activity.';
+      : mode === 'forgot'
+        ? 'Enter your account email. If it matches an account, we will send a one-time reset link.'
+        : mode === 'reset'
+          ? 'Choose a new password with at least 12 characters. This link can only be used once.'
+          : 'Sign in to open your private invoices and activity.';
   const close = h('button', { type: 'button', class: 'auth-link', onclick: () => { authPanel.hidden = true; } }, 'Close');
   const card = h('section', { class: 'auth-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'auth-title' },
     h('div', { class: 'auth-actions' }, h('span', { class: 'pill ok' }, state.user ? 'PRIVATE ACCOUNT' : 'ACCOUNT ACCESS'), close),
@@ -69,35 +76,55 @@ function openAccountPanel(mode = 'login') {
     } }, 'Sign out'));
   } else {
     const email = h('input', { id: 'auth-email', name: 'email', type: 'email', autocomplete: 'username', required: true, maxlength: '254', placeholder: 'you@example.com' });
-    const password = h('input', { id: 'auth-password', name: 'password', type: 'password', autocomplete: mode === 'register' ? 'new-password' : 'current-password', required: true, minlength: '12', maxlength: '128', placeholder: 'At least 12 characters' });
+    const password = mode === 'forgot' ? null : h('input', { id: 'auth-password', name: 'password', type: 'password', autocomplete: mode === 'register' || mode === 'reset' ? 'new-password' : 'current-password', required: true, minlength: '12', maxlength: '128', placeholder: 'At least 12 characters' });
+    if (mode === 'reset') email.hidden = true;
     const form = h('form', { onsubmit: async (event) => {
       event.preventDefault();
       const submit = form.querySelector('button[type="submit"]');
       submit.disabled = true;
       try {
-        await api('POST', mode === 'register' ? '/api/auth/register' : '/api/auth/login', { email: email.value, password: password.value });
-        authPanel.hidden = true;
-        await loadAccount();
-        await loadStatus();
-        await render();
-        toast(mode === 'register' ? 'Private workspace created.' : 'Signed in to your private workspace.');
+        if (mode === 'forgot') {
+          const result = await api('POST', '/api/auth/forgot-password', { email: email.value });
+          toast(result.message);
+          authPanel.hidden = true;
+        } else if (mode === 'reset') {
+          const result = await api('POST', '/api/auth/reset-password', { token: resetToken, password: password.value });
+          toast(result.message);
+          openAccountPanel('login');
+        } else {
+          await api('POST', mode === 'register' ? '/api/auth/register' : '/api/auth/login', { email: email.value, password: password.value });
+          authPanel.hidden = true;
+          await loadAccount();
+          await loadStatus();
+          await render();
+          toast(mode === 'register' ? 'Private workspace created.' : 'Signed in to your private workspace.');
+        }
       } catch (error) {
         toast(error.message);
-      } finally { submit.disabled = false; }
+      } finally { if (submit.isConnected) submit.disabled = false; }
     } },
-      h('label', { for: 'auth-email' }, 'Email address'), email,
-      h('label', { for: 'auth-password' }, 'Password'), password,
-      h('button', { type: 'submit', class: 'primary' }, mode === 'register' ? 'Create account' : 'Sign in'));
+      mode !== 'reset' ? h('label', { for: 'auth-email' }, 'Email address') : null,
+      mode !== 'reset' ? email : null,
+      password ? h('label', { for: 'auth-password' }, 'Password') : null,
+      password,
+      h('button', { type: 'submit', class: 'primary' }, mode === 'register' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : mode === 'reset' ? 'Update password' : 'Sign in'));
     card.append(form);
-    card.append(h('p', {}, mode === 'register' ? 'Already have an account?' : 'New to PayPilot?',
-      h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel(mode === 'register' ? 'login' : 'register') }, mode === 'register' ? 'Sign in' : 'Create an account')));
+    if (mode === 'login') {
+      card.append(h('p', {}, h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel('forgot') }, 'Forgot password?')));
+    }
+    if (mode === 'login' || mode === 'register') {
+      card.append(h('p', {}, mode === 'register' ? 'Already have an account?' : 'New to PayPilot?',
+        h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel(mode === 'register' ? 'login' : 'register') }, mode === 'register' ? 'Sign in' : 'Create an account')));
+    }
   }
   authPanel.replaceChildren(card);
   authPanel.hidden = false;
-  const first = authPanel.querySelector('input');
+  const first = authPanel.querySelector('input:not([hidden])');
   if (first) first.focus();
 }
 accountButtonState();
+const passwordResetToken = new URLSearchParams(location.search).get('reset');
+if (passwordResetToken) openAccountPanel('reset', passwordResetToken);
 
 // ---------- status ----------
 const pill = (cls, text) => h('span', { class: 'pill ' + cls }, text);

@@ -7,6 +7,7 @@ function fixture() {
   const states = new Map();
   const users = new Map();
   const sessions = new Map();
+  const resets = new Map();
   return {
     accountsEnabled: true,
     async checkAccountProvisioning() { return true; },
@@ -25,6 +26,18 @@ function fixture() {
     },
     async findUserByEmail(email) { const u = users.get(email); return u ? { ...u } : null; },
     async createSession({ sessionHash, tenantId, userId, expiresAt }) { sessions.set(sessionHash, { tenantId, userId, expiresAt, revoked: false }); },
+    async checkPasswordResetProvisioning() { return true; },
+    async createPasswordReset({ tokenHash, userId, expiresAt }) { resets.set(tokenHash, { userId, expiresAt: new Date(expiresAt), consumed: false }); },
+    async consumePasswordReset({ tokenHash, passwordHash }) {
+      const reset = resets.get(tokenHash);
+      if (!reset || reset.consumed || reset.expiresAt.getTime() <= Date.now()) return false;
+      const user = [...users.values()].find((item) => item.userId === reset.userId);
+      if (!user) return false;
+      user.passwordHash = passwordHash;
+      reset.consumed = true;
+      for (const session of sessions.values()) if (session.userId === user.userId) session.revoked = true;
+      return true;
+    },
     async resolveSession(hash, now = new Date()) {
       const s = sessions.get(hash);
       if (!s || s.revoked || s.expiresAt * 1000 <= now.getTime()) return null;
@@ -154,5 +167,61 @@ test('account routes fail closed when session signing is not configured', async 
       body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery staple' })
     });
     assert.equal(response.status, 503);
+  });
+});
+
+
+test('forgot password sends a one-time link, resets credentials and revokes existing sessions', async () => {
+  const repository = fixture();
+  let emailPayload;
+  const app = createApp({
+    repository,
+    tenantId: 'judge-demo',
+    emailFetch: async (_url, options) => { emailPayload = JSON.parse(options.body); return { ok: true, status: 200 }; },
+    env: {
+      NODE_ENV: 'test', PORT: '0',
+      SESSION_SECRET: 'test-session-secret-which-is-longer-than-32-bytes',
+      RESEND_API_KEY: 'test-resend-key',
+      EMAIL_FROM: 'PayPilot <test@example.com>',
+      APP_BASE_URL: 'https://paypilot.example'
+    }
+  });
+  await withServer(app, async (base) => {
+    const register = await fetch(base + '/api/auth/register', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com', password: 'old secure password' })
+    });
+    assert.equal(register.status, 201);
+    const oldCookie = register.headers.get('set-cookie').split(';')[0];
+
+    const forgot = await fetch(base + '/api/auth/forgot-password', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com' })
+    });
+    assert.equal(forgot.status, 200);
+    assert.match((await forgot.json()).message, /If an account exists/);
+    assert.equal(emailPayload.to[0], 'reset@example.com');
+    const link = emailPayload.text.match(/https:\/\/paypilot\.example\/\?reset=([A-Za-z0-9_-]+)/);
+    assert.ok(link, 'email contains a reset URL');
+    const token = link[1];
+
+    const reset = await fetch(base + '/api/auth/reset-password', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, password: 'new secure password' })
+    });
+    assert.equal(reset.status, 200);
+    assert.equal((await reset.json()).message, 'Password updated. Sign in with your new password.');
+    assert.equal((await fetch(base + '/api/auth/me', { headers: { cookie: oldCookie } })).status, 401);
+
+    const replay = await fetch(base + '/api/auth/reset-password', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, password: 'another secure password' })
+    });
+    assert.equal(replay.status, 400);
+    const login = await fetch(base + '/api/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com', password: 'new secure password' })
+    });
+    assert.equal(login.status, 200);
   });
 });

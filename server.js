@@ -49,6 +49,7 @@ function createApp(opts = {}) {
   if (!pgMode) db.processedWebhookEvents = Array.isArray(db.processedWebhookEvents) ? db.processedWebhookEvents : [];
   const paypal = opts.paypal || createPayPal({ clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET });
   const aiFetch = opts.aiFetch || fetch;
+  const emailFetch = opts.emailFetch || fetch;
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
@@ -87,6 +88,8 @@ function createApp(opts = {}) {
     pay: createLimiter({ windowMs: 60000, max: lim.pay || 20 }),
     authIp: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.authIp || 12 }),
     authIdentity: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.authIdentity || 6 }),
+    resetIp: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.resetIp || 8 }),
+    resetIdentity: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.resetIdentity || 4 }),
   };
   // Never trust client-supplied X-Forwarded-For by default: it is trivial to spoof and bypass IP limits.
 // Enable TRUST_PROXY=true only when the hosting proxy is configured to overwrite this header.
@@ -255,6 +258,70 @@ function createApp(opts = {}) {
     const session = createSessionToken({ secret: sessionSecret });
     await repository.createSession({ sessionHash: session.sessionHash, tenantId: user.tenantId, userId: user.userId, expiresAt: session.expiresAt });
     return { setCookie: serializeSessionCookie(session.token, { secure: isProduction }), json: { user: { id: user.userId, email: user.email } } };
+  });
+
+  const resetEmailConfigured = Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
+  async function sendPasswordResetEmail(email, token) {
+    const link = `${baseUrl}/?reset=${encodeURIComponent(token)}`;
+    const response = await emailFetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM,
+        to: [email],
+        subject: 'Reset your PayPilot password',
+        text: `We received a request to reset your PayPilot password. This link expires in 20 minutes and can be used once: ${link}\n\nIf you did not request this, you can ignore this email.`,
+        html: `<p>We received a request to reset your PayPilot password.</p><p><a href="${link}">Reset your password</a></p><p>This link expires in 20 minutes and can be used once. If you did not request this, ignore this email.</p>`
+      })
+    });
+    if (!response.ok) throw new Error(`Password reset email provider returned HTTP ${response.status}.`);
+  }
+
+  route('POST', '/api/auth/forgot-password', async ({ body, req }) => {
+    if (!authEnabled || !resetEmailConfigured || typeof repository.createPasswordReset !== 'function' || typeof repository.checkPasswordResetProvisioning !== 'function' || !(await repository.checkPasswordResetProvisioning())) {
+      throw new HttpError(503, 'Password reset email is not configured yet.');
+    }
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const ip = clientIp(req);
+    const ipLimit = L.resetIp.hit(ip);
+    const identityLimit = L.resetIdentity.hit(email.slice(0, 254) || 'missing');
+    if (!ipLimit.ok || !identityLimit.ok) {
+      throw new HttpError(429, 'Too many reset requests. Try again later.', { retryAfter: Math.max(ipLimit.retryAfter || 0, identityLimit.retryAfter || 0) });
+    }
+    // The response is identical whether or not the address belongs to an account.
+    if (email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      try {
+        const user = await repository.findUserByEmail(email);
+        if (user) {
+          const token = crypto.randomBytes(32).toString('base64url');
+          const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+          await repository.createPasswordReset({ tokenHash, userId: user.userId, expiresAt: new Date(Date.now() + 20 * 60 * 1000) });
+          await sendPasswordResetEmail(user.email, token);
+        }
+      } catch (error) {
+        // Do not reveal account existence or provider details to the caller.
+        console.error('Password reset request could not be completed.');
+      }
+    }
+    return { json: { message: 'If an account exists for that address, a password reset link will be sent.' } };
+  });
+
+  route('POST', '/api/auth/reset-password', async ({ body, req }) => {
+    if (!authEnabled || typeof repository.consumePasswordReset !== 'function' || typeof repository.checkPasswordResetProvisioning !== 'function' || !(await repository.checkPasswordResetProvisioning())) {
+      throw new HttpError(503, 'Password reset is not configured yet.');
+    }
+    const token = typeof body.token === 'string' ? body.token : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const ipLimit = L.resetIp.hit(clientIp(req));
+    if (!ipLimit.ok) throw new HttpError(429, 'Too many reset attempts. Try again later.', { retryAfter: ipLimit.retryAfter });
+    if (!/^[A-Za-z0-9_-]{40,50}$/.test(token) || password.length < 12 || password.length > 128) {
+      throw new HttpError(400, 'This reset link is invalid or expired. Request a new one.');
+    }
+    const passwordHash = await hashPassword(password);
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const changed = await repository.consumePasswordReset({ tokenHash, passwordHash });
+    if (!changed) throw new HttpError(400, 'This reset link is invalid or expired. Request a new one.');
+    return { json: { message: 'Password updated. Sign in with your new password.' } };
   });
 
   route('POST', '/api/auth/logout', async ({ headers }) => {

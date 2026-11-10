@@ -8,8 +8,17 @@
 PayPilot AI is an evidence-first receivables recovery agent for small businesses. It turns a scattered invoice list into a prioritised, explainable recovery plan: deterministic rules identify which accounts need attention, Gemini can translate the evidence into plain language, a human approves the exact next action, and PayPal Sandbox confirms whether money was actually captured. Every decision and outcome is traceable.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
-> **Judge demo:** the public judge workflow remains a shared, no-login demo tenant unless private accounts are explicitly configured. Private account endpoints use scrypt password hashes, signed HttpOnly sessions and session-resolved tenant routing; they remain disabled unless `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID`, `ACCOUNT_PROVISIONING_DATABASE_URL` and a strong `SESSION_SECRET` are configured and `/api/health` reports `auth.enabled: true`. Do not assume private accounts are enabled on a deployed service until that health field is verified. Production browser-facing mutations for the shared demo remain disabled by default. Use demo data only until a real customer deployment has been security-reviewed.  
+> **Judge demo:** the public judge workflow remains a shared, no-login demo tenant unless private accounts are explicitly configured. Private account endpoints use scrypt password hashes, signed HttpOnly sessions and session-resolved tenant routing; they remain disabled unless `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID`, `ACCOUNT_PROVISIONING_DATABASE_URL` and a strong `SESSION_SECRET` are configured and `/api/health` reports `auth.enabled: true`. Password reset additionally requires the `20261110_password_resets.sql` migration, reset-table/user/session privileges for the provisioning role, `RESEND_API_KEY`, and a verified `EMAIL_FROM` sender. The UI then exposes **Forgot password?** on sign-in; reset links are single-use and expire after 20 minutes. Do not assume private accounts are enabled on a deployed service until that health field is verified. Production browser-facing mutations for the shared demo remain disabled by default. Use demo data only until a real customer deployment has been security-reviewed.  
 > **Deployment distinction:** the judge preview is deployed from `codex/paypilot-human-crafted-ui` and reports PostgreSQL tenant-scoped storage. The original production service is a separate deployment; do not assume both services run the same commit or storage configuration. The public judge preview is still a shared, no-login demo tenant—not private per-user workspaces. This is a hackathon demo, not production accounting software.
+
+### Password reset setup
+
+1. Apply [`db/migrations/20261110_password_resets.sql`](db/migrations/20261110_password_resets.sql) to the same Neon database used by PayPilot.
+2. Ensure the `ACCOUNT_PROVISIONING_DATABASE_URL` role can insert/select/update `paypilot_password_resets`, update `paypilot_users`, and update `paypilot_sessions`.
+3. In the Render preview service environment, set `RESEND_API_KEY` and `EMAIL_FROM` to a verified sender in your Resend account. Keep the API key private; never commit it.
+4. Confirm `APP_BASE_URL` points to the preview URL, then redeploy and verify the reset flow using a test account.
+
+The request response does not disclose whether an account exists. Only a SHA-256 token hash is stored; tokens expire after 20 minutes, are consumed atomically, and a successful reset revokes all existing sessions. Provider errors are intentionally not returned to the browser.
 
 ### Public demo mutation switch
 
