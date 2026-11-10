@@ -143,3 +143,46 @@ test('PayPal rejects HTTPS approval links hosted by an untrusted domain', async 
     requestId: 'req-1', returnUrl: 'https://example.test/return', cancelUrl: 'https://example.test/cancel',
   }), /trusted Sandbox approval link/i);
 });
+
+
+test('PayPal order creation preserves safe provider diagnostics without exposing secrets', async () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let calls = 0;
+  try {
+    const paypal = createPayPal({
+      clientId: 'sandbox-client-secret-id',
+      secret: 'never-log-this-secret',
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) return response(200, { access_token: 'never-log-this-token', expires_in: 300 });
+        return response(422, {
+          name: 'UNPROCESSABLE_ENTITY',
+          debug_id: 'SAFE-DEBUG-123',
+          details: [{ issue: 'ORDER_NOT_APPROVED', description: 'private provider detail' }],
+        });
+      },
+    });
+    await assert.rejects(
+      paypal.createOrder({
+        invoice: { id: 'inv1', number: 'INV-1', amount: 10, currency: 'USD' },
+        requestId: 'req-1', returnUrl: 'https://example.test/return', cancelUrl: 'https://example.test/cancel',
+      }),
+      (error) => {
+        assert.equal(error.code, 'PAYPAL_API_ERROR');
+        assert.deepEqual(error.paypal, {
+          status: 422, name: 'UNPROCESSABLE_ENTITY', issue: 'ORDER_NOT_APPROVED', debugId: 'SAFE-DEBUG-123',
+        });
+        assert.doesNotMatch(error.message, /never-log|private provider detail/i);
+        return true;
+      }
+    );
+    const log = warnings.join(' ');
+    assert.match(log, /SAFE-DEBUG-123/);
+    assert.match(log, /ORDER_NOT_APPROVED/);
+    assert.doesNotMatch(log, /never-log-this-secret|never-log-this-token|private provider detail/);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
