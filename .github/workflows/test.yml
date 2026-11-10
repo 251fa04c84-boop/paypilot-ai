@@ -25,5 +25,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Check server and browser JavaScript syntax
+        run: node --check server.js && node --check public/app.js && node --check lib/email.js
       - name: Run complete test suite
         run: npm test
