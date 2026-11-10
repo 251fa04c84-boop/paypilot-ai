@@ -39,7 +39,7 @@ function createApp(opts = {}) {
     ? (opts.repository || createPostgresRepository({ pool: opts.pgPool || createPgPool({ connectionString: env.DATABASE_URL }), adminPool }))
     : null;
   const sessionSecret = env.SESSION_SECRET || '';
-  const authEnabled = Boolean(pgMode && Buffer.byteLength(sessionSecret, 'utf8') >= 32 && repository && repository.accountsEnabled === true && ['createAccount', 'findUserByEmail', 'createSession', 'resolveSession', 'revokeSession'].every((name) => typeof repository[name] === 'function'));
+  const authEnabled = Boolean(pgMode && Buffer.byteLength(sessionSecret, 'utf8') >= 32 && repository && repository.accountsEnabled === true && ['createAccount', 'findUserByEmail', 'createSession', 'resolveSession', 'revokeSession', 'checkAccountProvisioning'].every((name) => typeof repository[name] === 'function'));
   const resolveTenantContext = authEnabled ? createTenantContextResolver({ repository, secret: sessionSecret, now: () => Date.now() }) : null;
   const judgeContext = pgMode ? createJudgeDemoContext(pgTenantId) : null;
   const store = opts.store || (pgMode
@@ -217,7 +217,7 @@ function createApp(opts = {}) {
   };
 
   route('POST', '/api/auth/register', async ({ body, req }) => {
-    if (!authEnabled) throw new HttpError(503, 'Private accounts are not enabled. Configure PostgreSQL account provisioning and SESSION_SECRET first.');
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
     const email = typeof body.email === 'string' ? body.email.trim() : '';
     const normalizedEmail = email.toLowerCase();
     const password = body.password;
@@ -241,7 +241,7 @@ function createApp(opts = {}) {
   });
 
   route('POST', '/api/auth/login', async ({ body, req }) => {
-    if (!authEnabled) throw new HttpError(503, 'Private accounts are not enabled on this deployment.');
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     const password = typeof body.password === 'string' ? body.password : '';
     const ip = clientIp(req);
@@ -266,13 +266,17 @@ function createApp(opts = {}) {
   });
 
   route('GET', '/api/auth/me', async ({ headers }) => {
-    if (!authEnabled) throw new HttpError(503, 'Private accounts are not enabled on this deployment.');
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
     const context = await resolveTenantContext(headers);
     if (!context) throw new HttpError(401, 'Sign in to access your account.');
     return { json: { user: { id: context.userId }, tenantId: context.tenantId } };
   });
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: authEnabled ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: authEnabled, sessionTtlSeconds: 604800 }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
+  route('GET', '/api/health', async () => {
+    let accountsReady = false;
+    if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
+    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
+  });
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     requireMutableDemo();
