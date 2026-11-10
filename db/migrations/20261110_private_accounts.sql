@@ -41,4 +41,14 @@ AS $$
   LIMIT 1;
 $$;
 
+-- The staging runtime updates a session during logout. PostgreSQL also
+-- requires SELECT on columns used by UPDATE predicates/RETURNING.
+DO $grant$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_staging_runtime') THEN
+    EXECUTE 'GRANT SELECT ON TABLE public.paypilot_sessions TO paypilot_staging_runtime';
+  END IF;
+END
+$grant$;
+
 COMMIT;
