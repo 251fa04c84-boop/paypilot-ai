@@ -476,3 +476,31 @@ test('persists order routing and webhook replay keys in the tenant transaction',
   assert.ok(eventInsert.sql.includes('ON CONFLICT (event_id) DO NOTHING'));
   assert.ok(pool.calls.some((x) => x.sql.includes('UPDATE paypilot_tenant_state')));
 });
+
+
+test('private account lookup does not join the forced-RLS tenant table before authentication', async () => {
+  const adminCalls = [];
+  const adminPool = {
+    async query(sql, params) {
+      adminCalls.push({ sql, params });
+      return { rows: [{
+        user_id: 'user-a',
+        tenant_id: 'tenant-a',
+        email: 'person@example.com',
+        password_hash: 'scrypt-hash'
+      }] };
+    }
+  };
+  const pool = { async connect() { throw new Error('not needed for lookup'); } };
+  const repo = createPostgresRepository({ pool, adminPool });
+  const user = await repo.findUserByEmail('person@example.com');
+  assert.deepEqual(user, {
+    userId: 'user-a',
+    tenantId: 'tenant-a',
+    email: 'person@example.com',
+    passwordHash: 'scrypt-hash'
+  });
+  assert.equal(adminCalls.length, 1);
+  assert.match(adminCalls[0].sql, /FROM paypilot_users WHERE email_normalized = \$1/);
+  assert.doesNotMatch(adminCalls[0].sql, /JOIN\\s+paypilot_tenants/i);
+});
