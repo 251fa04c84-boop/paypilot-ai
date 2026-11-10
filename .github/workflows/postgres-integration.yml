@@ -47,6 +47,10 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f migrations/003_rls_bootstrap_lookups.sql
       - name: Allow pending PayPal order status
         run: psql -v ON_ERROR_STOP=1 -f migrations/004_paypal_pending_order_status.sql
+      - name: Apply private account and session migration
+        run: psql -v ON_ERROR_STOP=1 -f db/migrations/20261110_private_accounts.sql
+      - name: Verify restricted private-account bootstrap lookups
+        run: psql -v ON_ERROR_STOP=1 -f test/private-account-migration.integration.sql
       - name: Verify tenant isolation as non-owner runtime role
         run: PGPASSWORD="$TEST_RUNTIME_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U paypilot_staging_runtime -d "$PGDATABASE" -f test/postgres-rls.integration.sql
       - name: Verify concurrent writes and cross-connection persistence
