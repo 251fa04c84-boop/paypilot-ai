@@ -277,7 +277,7 @@ function createApp(opts = {}) {
   }
 
   route('POST', '/api/auth/forgot-password', async ({ body, req }) => {
-    if (!authEnabled || !resetEmailConfigured || typeof repository.createPasswordReset !== 'function') {
+    if (!authEnabled || !resetEmailConfigured || typeof repository.createPasswordReset !== 'function' || typeof repository.checkPasswordResetProvisioning !== 'function' || !(await repository.checkPasswordResetProvisioning())) {
       throw new HttpError(503, 'Password reset email is not configured yet.');
     }
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
@@ -306,7 +306,7 @@ function createApp(opts = {}) {
   });
 
   route('POST', '/api/auth/reset-password', async ({ body, req }) => {
-    if (!authEnabled || typeof repository.consumePasswordReset !== 'function') {
+    if (!authEnabled || typeof repository.consumePasswordReset !== 'function' || typeof repository.checkPasswordResetProvisioning !== 'function' || !(await repository.checkPasswordResetProvisioning())) {
       throw new HttpError(503, 'Password reset is not configured yet.');
     }
     const token = typeof body.token === 'string' ? body.token : '';
