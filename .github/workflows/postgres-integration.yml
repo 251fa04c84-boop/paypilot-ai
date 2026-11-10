@@ -12,6 +12,7 @@ on:
 jobs:
   postgres-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
