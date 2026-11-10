@@ -178,17 +178,36 @@ BEGIN
 END;
 $;
 
+CREATE OR REPLACE FUNCTION public.paypilot_invalidate_password_reset(p_token_hash TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $
+BEGIN
+  UPDATE public.paypilot_password_reset_tokens
+  SET used_at = now()
+  WHERE token_hash = p_token_hash AND used_at IS NULL;
+  RETURN FOUND;
+END;
+$;
+
 REVOKE ALL ON FUNCTION public.paypilot_create_password_reset(text, text, timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.paypilot_complete_password_reset(text, text, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.paypilot_invalidate_password_reset(text) FROM PUBLIC;
+
 DO $reset_grants$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_account_provisioner') THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_create_password_reset(text, text, timestamptz) TO paypilot_account_provisioner';
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_complete_password_reset(text, text, timestamptz) TO paypilot_account_provisioner';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_invalidate_password_reset(text) TO paypilot_account_provisioner';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_provisioner') THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_create_password_reset(text, text, timestamptz) TO paypilot_provisioner';
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_complete_password_reset(text, text, timestamptz) TO paypilot_provisioner';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_invalidate_password_reset(text) TO paypilot_provisioner';
   END IF;
 END
 $reset_grants$;
