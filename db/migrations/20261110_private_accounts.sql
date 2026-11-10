@@ -29,6 +29,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
+SET row_security = off
 AS $$
   SELECT s.tenant_id, s.user_id
   FROM public.paypilot_sessions AS s
@@ -41,6 +42,19 @@ AS $$
   LIMIT 1;
 $$;
 
+REVOKE ALL ON FUNCTION public.paypilot_resolve_session(text, timestamptz) FROM PUBLIC;
+DO $session_grants$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_staging_runtime') THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_resolve_session(text, timestamptz) TO paypilot_staging_runtime';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_runtime') THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_resolve_session(text, timestamptz) TO paypilot_runtime';
+  END IF;
+END
+$session_grants$;
+
+
 
 -- Account login must find a user before its tenant context is known. Keep
 -- this cross-tenant lookup inside a narrowly scoped SECURITY DEFINER function;
@@ -51,6 +65,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
+SET row_security = off
 AS $$
   SELECT u.user_id, u.tenant_id, u.email, u.password_hash
   FROM public.paypilot_users AS u
