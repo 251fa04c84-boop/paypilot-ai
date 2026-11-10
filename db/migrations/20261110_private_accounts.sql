@@ -95,6 +95,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_staging_runtime') THEN
     EXECUTE 'GRANT SELECT ON TABLE public.paypilot_sessions TO paypilot_staging_runtime';
   END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_runtime') THEN
+    EXECUTE 'GRANT SELECT ON TABLE public.paypilot_sessions TO paypilot_runtime';
+  END IF;
 END
 $grant$;
 
