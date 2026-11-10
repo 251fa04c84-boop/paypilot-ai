@@ -50,17 +50,25 @@ async function loadAccount() {
   accountButtonState();
 }
 function openAccountPanel(mode = 'login') {
-  const title = mode === 'register' ? 'Create your private workspace' : mode === 'account' ? 'Your private workspace' : 'Sign in to PayPilot';
-  const description = mode === 'register'
-    ? 'Create a separate workspace for your invoices. Use at least 12 characters for your password.'
-    : mode === 'account'
-      ? 'Your records are loaded from the tenant linked to your signed-in account.'
-      : 'Sign in to open your private invoices and activity.';
+  const titles = {
+    register: 'Create your private workspace',
+    account: 'Your private workspace',
+    forgot: 'Reset your password',
+    reset: 'Choose a new password',
+    login: 'Sign in to PayPilot'
+  };
+  const descriptions = {
+    register: 'Create a separate workspace for your invoices. Use at least 12 characters for your password.',
+    account: 'Your records are loaded from the tenant linked to your signed-in account.',
+    forgot: 'Enter your account email. If an account exists, we will send a one-time reset link.',
+    reset: 'Choose a new password with at least 12 characters. Reset links expire after 30 minutes.',
+    login: 'Sign in to open your private invoices and activity.'
+  };
   const close = h('button', { type: 'button', class: 'auth-link', onclick: () => { authPanel.hidden = true; } }, 'Close');
   const card = h('section', { class: 'auth-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'auth-title' },
     h('div', { class: 'auth-actions' }, h('span', { class: 'pill ok' }, state.user ? 'PRIVATE ACCOUNT' : 'ACCOUNT ACCESS'), close),
-    h('h2', { id: 'auth-title' }, title),
-    h('p', {}, description));
+    h('h2', { id: 'auth-title' }, titles[mode] || titles.login),
+    h('p', {}, descriptions[mode] || descriptions.login));
   if (mode === 'account' && state.user) {
     card.append(h('p', {}, 'Account ID: ' + state.user.id));
     card.append(h('button', { type: 'button', class: 'primary', onclick: async () => {
@@ -68,13 +76,33 @@ function openAccountPanel(mode = 'login') {
       catch (error) { toast(error.message); }
     } }, 'Sign out'));
   } else {
-    const email = h('input', { id: 'auth-email', name: 'email', type: 'email', autocomplete: 'username', required: true, maxlength: '254', placeholder: 'you@example.com' });
-    const password = h('input', { id: 'auth-password', name: 'password', type: 'password', autocomplete: mode === 'register' ? 'new-password' : 'current-password', required: true, minlength: '12', maxlength: '128', placeholder: 'At least 12 characters' });
+    const email = mode === 'reset' ? null : h('input', { id: 'auth-email', name: 'email', type: 'email', autocomplete: 'username', required: true, maxlength: '254', placeholder: 'you@example.com' });
+    const password = (mode === 'login' || mode === 'register' || mode === 'reset')
+      ? h('input', { id: 'auth-password', name: 'password', type: 'password', autocomplete: mode === 'login' ? 'current-password' : 'new-password', required: true, minlength: '12', maxlength: '128', placeholder: 'At least 12 characters' })
+      : null;
+    const confirm = mode === 'reset'
+      ? h('input', { id: 'auth-confirm', name: 'confirm', type: 'password', autocomplete: 'new-password', required: true, minlength: '12', maxlength: '128', placeholder: 'Confirm new password' })
+      : null;
     const form = h('form', { onsubmit: async (event) => {
       event.preventDefault();
       const submit = form.querySelector('button[type="submit"]');
       submit.disabled = true;
       try {
+        if (mode === 'forgot') {
+          await api('POST', '/api/auth/password/forgot', { email: email.value });
+          toast('If an account exists for that email, a reset link will be sent.');
+          return;
+        }
+        if (mode === 'reset') {
+          if (password.value !== confirm.value) throw new Error('The passwords do not match.');
+          const token = new URLSearchParams(location.search).get('reset_token') || '';
+          await api('POST', '/api/auth/password/reset', { token, password: password.value });
+          history.replaceState(null, '', location.pathname);
+          authPanel.hidden = true;
+          toast('Password updated. Please sign in again.');
+          openAccountPanel('login');
+          return;
+        }
         await api('POST', mode === 'register' ? '/api/auth/register' : '/api/auth/login', { email: email.value, password: password.value });
         authPanel.hidden = true;
         await loadAccount();
@@ -84,13 +112,19 @@ function openAccountPanel(mode = 'login') {
       } catch (error) {
         toast(error.message);
       } finally { submit.disabled = false; }
-    } },
-      h('label', { for: 'auth-email' }, 'Email address'), email,
-      h('label', { for: 'auth-password' }, 'Password'), password,
-      h('button', { type: 'submit', class: 'primary' }, mode === 'register' ? 'Create account' : 'Sign in'));
+    } });
+    if (email) { form.append(h('label', { for: 'auth-email' }, 'Email address'), email); }
+    if (password) { form.append(h('label', { for: 'auth-password' }, mode === 'reset' ? 'New password' : 'Password'), password); }
+    if (confirm) { form.append(h('label', { for: 'auth-confirm' }, 'Confirm new password'), confirm); }
+    const submitLabel = mode === 'register' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : mode === 'reset' ? 'Update password' : 'Sign in';
+    form.append(h('button', { type: 'submit', class: 'primary' }, submitLabel));
     card.append(form);
-    card.append(h('p', {}, mode === 'register' ? 'Already have an account?' : 'New to PayPilot?',
-      h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel(mode === 'register' ? 'login' : 'register') }, mode === 'register' ? 'Sign in' : 'Create an account')));
+    if (mode === 'login') {
+      card.append(h('p', {}, h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel('forgot') }, 'Forgot password?')));
+      card.append(h('p', {}, 'New to PayPilot? ', h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel('register') }, 'Create an account')));
+    } else if (mode === 'register' || mode === 'forgot') {
+      card.append(h('p', {}, 'Already have an account? ', h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel('login') }, 'Sign in')));
+    }
   }
   authPanel.replaceChildren(card);
   authPanel.hidden = false;
