@@ -7,6 +7,7 @@ function fixture() {
   const states = new Map();
   const users = new Map();
   const sessions = new Map();
+  const resetTokens = new Map();
   return {
     accountsEnabled: true,
     async checkAccountProvisioning() { return true; },
@@ -34,6 +35,26 @@ function fixture() {
       const s = sessions.get(hash);
       if (!s || s.tenantId !== tenantId || s.revoked) return false;
       s.revoked = true;
+      return true;
+    },
+    async createPasswordReset({ email, tokenHash, expiresAt }) {
+      const user = users.get(String(email).toLowerCase());
+      if (!user) return null;
+      resetTokens.set(tokenHash, { user, expiresAt: new Date(expiresAt), used: false });
+      return user.email;
+    },
+    async invalidatePasswordReset(tokenHash) {
+      const record = resetTokens.get(tokenHash);
+      if (!record || record.used) return false;
+      record.used = true;
+      return true;
+    },
+    async completePasswordReset({ tokenHash, passwordHash, now = new Date() }) {
+      const record = resetTokens.get(tokenHash);
+      if (!record || record.used || record.expiresAt <= new Date(now)) return false;
+      record.used = true;
+      record.user.passwordHash = passwordHash;
+      for (const session of sessions.values()) if (session.userId === record.user.userId) session.revoked = true;
       return true;
     }
   };
@@ -152,6 +173,79 @@ test('account routes fail closed when session signing is not configured', async 
     const response = await fetch(base + '/api/auth/register', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery staple' })
+    });
+    assert.equal(response.status, 503);
+  });
+});
+
+
+test('password recovery sends a one-time link, updates the password, and revokes sessions', async () => {
+  const repository = fixture();
+  const sent = [];
+  const emailProvider = {
+    configured: true,
+    async sendPasswordReset(message) { sent.push(message); }
+  };
+  const app = createApp({
+    repository, tenantId: 'judge-demo', emailProvider,
+    env: { NODE_ENV: 'test', PORT: '0', SESSION_SECRET: 'test-session-secret-which-is-longer-than-32-bytes' }
+  });
+  await withServer(app, async (base) => {
+    const register = await fetch(base + '/api/auth/register', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com', password: 'original secure passphrase' })
+    });
+    assert.equal(register.status, 201);
+    const oldCookie = register.headers.get('set-cookie').split(';')[0];
+
+    const forgot = await fetch(base + '/api/auth/password/forgot', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com' })
+    });
+    assert.equal(forgot.status, 202);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, 'reset@example.com');
+    assert.match(sent[0].token, /^[A-Za-z0-9_-]{40,60}$/);
+
+    const unknown = await fetch(base + '/api/auth/password/forgot', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'missing@example.com' })
+    });
+    assert.equal(unknown.status, 202);
+    assert.equal(sent.length, 1, 'unknown accounts must not receive email or be disclosed');
+
+    const reset = await fetch(base + '/api/auth/password/reset', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: sent[0].token, password: 'new secure passphrase 2026' })
+    });
+    assert.equal(reset.status, 200);
+    const oldSession = await fetch(base + '/api/auth/me', { headers: { cookie: oldCookie } });
+    assert.equal(oldSession.status, 401);
+
+    const replay = await fetch(base + '/api/auth/password/reset', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: sent[0].token, password: 'another secure passphrase' })
+    });
+    assert.equal(replay.status, 400);
+
+    const login = await fetch(base + '/api/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com', password: 'new secure passphrase 2026' })
+    });
+    assert.equal(login.status, 200);
+  });
+});
+
+test('password recovery fails closed without a configured email provider', async () => {
+  const repository = fixture();
+  const app = createApp({
+    repository, tenantId: 'judge-demo',
+    env: { NODE_ENV: 'test', PORT: '0', SESSION_SECRET: 'test-session-secret-which-is-longer-than-32-bytes' }
+  });
+  await withServer(app, async (base) => {
+    const response = await fetch(base + '/api/auth/password/forgot', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com' })
     });
     assert.equal(response.status, 503);
   });
