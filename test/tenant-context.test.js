@@ -13,11 +13,12 @@ test('resolves a tenant only from a valid signed cookie and persisted session ha
   let receivedHash;
   const resolve = createTenantContextResolver({
     secret, now: () => now,
-    repository: { async resolveSession(hash) { receivedHash = hash; return { tenantId: 'tenant-a' }; } }
+    repository: { async resolveSession(hash) { receivedHash = hash; return { tenantId: 'tenant-a', userId: 'user-a' }; } }
   });
   const ctx = await resolve({ cookie: 'theme=dark; pp_session=' + token.token });
   assert.equal(ctx.tenantId, 'tenant-a');
   assert.equal(ctx.kind, 'private');
+  assert.equal(ctx.userId, 'user-a');
   assert.equal(receivedHash, token.sessionHash);
   assert.equal(Object.isFrozen(ctx), true);
 });
