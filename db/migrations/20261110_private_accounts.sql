@@ -51,7 +51,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $$
   SELECT u.user_id, u.tenant_id, u.email, u.password_hash
   FROM public.paypilot_users AS u
   JOIN public.paypilot_tenants AS t ON t.tenant_id = u.tenant_id
@@ -59,7 +59,7 @@ AS $
     AND t.status = 'active'
     AND t.tenant_kind = 'private'
   LIMIT 1;
-$;
+$$;
 
 REVOKE ALL ON FUNCTION public.paypilot_find_user_by_email(text) FROM PUBLIC;
 DO $lookup_grants$
