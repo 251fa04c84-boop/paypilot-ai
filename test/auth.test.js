@@ -60,14 +60,14 @@ test('registration, login, logout and private tenant routing work without trusti
     assert.equal(me.status, 200);
     const identity = await me.json();
     assert.equal(identity.user.id, 'user-1');
-    assert.notEqual(identity.tenantId, 'attacker-tenant');
+    assert.equal(Object.hasOwn(identity, 'tenantId'), false);
 
     const create = await fetch(base + '/api/invoices', {
       method: 'POST', headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ client: 'Private client', number: 'P-1', amount: 100, currency: 'USD', issueDate: '2026-11-01', dueDate: '2026-11-15' })
     });
     assert.equal(create.status, 201);
-    const privateTenant = identity.tenantId;
+    const privateTenant = repository.users.get('owner@example.com').tenantId;
     assert.equal(repository.states.get(privateTenant).invoices.length, 1);
 
     const secondRegister = await fetch(base + '/api/auth/register', {
