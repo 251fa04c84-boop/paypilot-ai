@@ -151,7 +151,7 @@ function createApp(opts = {}) {
     }
   }
 
-  async function capture(orderId) {
+  async function capture(orderId, { readOnly = false } = {}) {
     if (typeof orderId !== 'string' || !/^[A-Za-z0-9-]{5,40}$/.test(orderId)) throw new HttpError(400, 'Invalid order id.');
     const rec = db.orders.find((o) => o.orderId === orderId);
     if (!rec) throw new HttpError(404, 'Unknown order. Only orders created by this app can be captured.');
@@ -165,7 +165,7 @@ function createApp(opts = {}) {
       if (!invoice) throw new HttpError(409, 'The invoice no longer exists. No new capture was attempted.');
       let order;
       const mayInitiateCapture = invoice.status === 'open' && !invoice.disputed;
-      if (mayInitiateCapture) {
+      if (mayInitiateCapture && !readOnly) {
         try { order = await ppNow().captureOrder(orderId); }
         catch (e) { if (e.code === 'NOT_APPROVED') throw new HttpError(409, e.message); throw new HttpError(502, e.message); }
       } else {
@@ -462,7 +462,7 @@ function createApp(opts = {}) {
       addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `PayPal webhook verified: ${event} for order ${orderId}.` }, iso());
       let captureResult = null;
       if (event === 'CHECKOUT.ORDER.APPROVED' || event === 'PAYMENT.CAPTURE.COMPLETED') {
-        captureResult = await capture(orderId);
+        captureResult = await capture(orderId, { readOnly: event === 'PAYMENT.CAPTURE.COMPLETED' });
       }
       db.processedWebhookEvents.push({ id: eventId, at: iso() });
       store.save();
@@ -868,12 +868,27 @@ function createApp(opts = {}) {
       const authPath = url.pathname.startsWith('/api/auth/');
       let tenantContext = judgeContext;
       const invoke = () => requestContext.run(tenantContext, () => m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams), req }));
-      if (pgMode && !authPath) {
+      if (pgMode && !authPath && url.pathname !== '/api/paypal/webhook') {
         const sessionCookie = readCookie(req.headers.cookie || '', COOKIE_NAME);
         if (sessionCookie) {
           if (!authEnabled) throw new HttpError(401, 'This session cannot be used on this deployment.');
           tenantContext = await resolveTenantContext(req.headers);
           if (!tenantContext) throw new HttpError(401, 'Session is invalid or expired. Sign in again.');
+        }
+      }
+      // PayPal callbacks carry no browser session. Route them to the tenant that owns
+      // the opaque order ID; the handler still verifies PayPal's signature before writes.
+      if (pgMode && url.pathname === '/api/paypal/webhook') {
+        const event = body && body.event_type;
+        const resource = body && body.resource;
+        let orderId = resource && resource.id;
+        const related = resource && resource.supplementary_data && resource.supplementary_data.related_ids;
+        if (typeof event === 'string' && event.startsWith('PAYMENT.CAPTURE.') && related && related.order_id) orderId = related.order_id;
+        if (typeof orderId === 'string' && repository && typeof repository.findOrderRoute === 'function') {
+          const route = await repository.findOrderRoute(orderId);
+          if (route && typeof route.tenant_id === 'string') {
+            tenantContext = Object.freeze({ tenantId: route.tenant_id, kind: route.tenant_id === pgTenantId ? 'judge_demo' : 'private' });
+          }
         }
       }
       if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !authPath && (!tenantContext || tenantContext.kind !== 'private') && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
