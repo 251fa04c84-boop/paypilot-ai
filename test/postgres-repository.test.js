@@ -50,9 +50,7 @@ test('account provisioning is atomic and checks separate admin/runtime permissio
   const adminClient = {
     async query(sql, params = []) {
       adminCalls.push({ sql, params });
-      if (sql.includes('INSERT INTO paypilot_users')) {
-        return { rows: [{ user_id: 'user-uuid', tenant_id: params[0], email: params[1] }] };
-      }
+      if (sql.includes('INSERT INTO paypilot_users')) return { rows: [{ user_id: 'user-uuid', tenant_id: params[0], email: params[1] }] };
       return { rows: [] };
     },
     release() { adminCalls.push({ sql: 'RELEASE' }); }
@@ -73,11 +71,28 @@ test('account provisioning is atomic and checks separate admin/runtime permissio
   const repo = createPostgresRepository({ pool: runtime, adminPool });
   assert.equal(repo.accountsEnabled, true);
   assert.equal(await repo.checkAccountProvisioning(), true);
-  const user = await repo.createAccount({
-    tenantId: 'acct_test-uuid',
-    email: 'person@example.com',
-    normalizedEmail: 'person@example.com',
-    passwordHash: 'scrypt$16384$8$1
+  const user = await repo.createAccount({ tenantId: 'acct_test-uuid', email: 'person@example.com', normalizedEmail: 'person@example.com', passwordHash: 'hash-value-that-is-long-enough-for-test' });
+  assert.deepEqual(user, { userId: 'user-uuid', tenantId: 'acct_test-uuid', email: 'person@example.com' });
+  assert.ok(adminCalls.some((x) => x.sql === 'BEGIN'));
+  assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_tenants')));
+  assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_tenant_state')));
+  assert.ok(adminCalls.some((x) => x.sql.includes('INSERT INTO paypilot_users')));
+  assert.ok(adminCalls.some((x) => x.sql === 'COMMIT'));
+});
+
+test('session resolver requires account identity and session inserts bind it to the tenant', async () => {
+  const pool = fakePool();
+  const repo = createPostgresRepository({ pool });
+  pool.query = async (sql, params = []) => {
+    pool.calls.push({ scope: 'pool', sql, params });
+    if (sql.includes('paypilot_resolve_session')) return { rows: [{ tenant_id: 'acct_a', user_id: 'user-a' }] };
+    return { rows: [] };
+  };
+  assert.deepEqual(await repo.resolveSession('a'.repeat(64)), { tenantId: 'acct_a', userId: 'user-a' });
+  await repo.createSession({ sessionHash: 'b'.repeat(64), tenantId: 'acct_a', userId: 'user-a', expiresAt: 1799999999 });
+  const insert = pool.calls.find((x) => x.sql.includes('INSERT INTO paypilot_sessions'));
+  assert.deepEqual(insert.params, ['b'.repeat(64), 'acct_a', 'user-a', new Date(1799999999 * 1000)]);
+});
 
 test('normalizes JSON state without sharing mutable default arrays', () => {
   const a = normalizeState({});
