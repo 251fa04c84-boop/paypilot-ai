@@ -49,6 +49,7 @@ function createApp(opts = {}) {
   if (!pgMode) db.processedWebhookEvents = Array.isArray(db.processedWebhookEvents) ? db.processedWebhookEvents : [];
   const paypal = opts.paypal || createPayPal({ clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET });
   const aiFetch = opts.aiFetch || fetch;
+  const emailFetch = opts.emailFetch || fetch;
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
@@ -262,7 +263,7 @@ function createApp(opts = {}) {
   const resetEmailConfigured = Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
   async function sendPasswordResetEmail(email, token) {
     const link = `${baseUrl}/?reset=${encodeURIComponent(token)}`;
-    const response = await fetch('https://api.resend.com/emails', {
+    const response = await emailFetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
