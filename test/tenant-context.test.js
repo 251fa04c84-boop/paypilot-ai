@@ -23,6 +23,16 @@ test('resolves a tenant only from a valid signed cookie and persisted session ha
   assert.equal(Object.isFrozen(ctx), true);
 });
 
+test('fails closed for a persisted session that is not linked to a user', async () => {
+  const now = 1700000000000;
+  const token = createSessionToken({ secret, now });
+  const resolve = createTenantContextResolver({
+    secret, now: () => now,
+    repository: { async resolveSession() { return { tenantId: 'tenant-a', userId: null }; } }
+  });
+  assert.equal(await resolve({ cookie: 'pp_session=' + token.token }), null);
+});
+
 test('fails closed for absent, tampered, expired, or unpersisted sessions', async () => {
   const now = 1700000000000;
   const token = createSessionToken({ secret, now });
