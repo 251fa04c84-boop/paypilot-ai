@@ -269,7 +269,7 @@ function createApp(opts = {}) {
     if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
     const context = await resolveTenantContext(headers);
     if (!context) throw new HttpError(401, 'Sign in to access your account.');
-    return { json: { user: { id: context.userId }, tenantId: context.tenantId } };
+    return { json: { user: { id: context.userId } } };
   });
 
   route('GET', '/api/health', async () => {
