@@ -25,7 +25,7 @@ The app checks provisioning grants and exposes readiness at `GET /api/health` as
 - `POST /api/auth/register` — accepts `{ "email": "...", "password": "..." }`; atomically creates a private tenant, empty tenant state and user, then signs the user in.
 - `POST /api/auth/login` — accepts email/password and returns a signed session cookie.
 - `POST /api/auth/logout` — revokes the persisted session and clears the cookie.
-- `GET /api/auth/me` — validates the cookie and returns the authenticated user and tenant identifier.
+- `GET /api/auth/me` — validates the cookie and returns the authenticated user. The internal tenant identifier is deliberately not exposed to the browser.
 
 Passwords must be 12–128 characters. Passwords are stored as salted Node.js scrypt hashes (N=16384, r=8, p=1, 64-byte output); plaintext passwords are never persisted. Sessions use random 256-bit IDs, HMAC signatures, SHA-256 session hashes in PostgreSQL, seven-day expiry, HttpOnly, SameSite=Lax and Secure cookies in production.
 
