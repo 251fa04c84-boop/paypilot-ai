@@ -51,4 +51,43 @@ BEGIN
 END $$;
 RESET ROLE;
 
+DO $
+BEGIN
+  IF NOT has_function_privilege('paypilot_account_provisioner', 'public.paypilot_create_password_reset(text,text,timestamp with time zone)', 'EXECUTE')
+     OR NOT has_function_privilege('paypilot_account_provisioner', 'public.paypilot_complete_password_reset(text,text,timestamp with time zone)', 'EXECUTE')
+     OR NOT has_function_privilege('paypilot_account_provisioner', 'public.paypilot_invalidate_password_reset(text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'account provisioner is missing password reset function access';
+  END IF;
+  IF has_function_privilege('paypilot_staging_runtime', 'public.paypilot_create_password_reset(text,text,timestamp with time zone)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'runtime must not execute password reset bootstrap functions';
+  END IF;
+END $;
+
+SET ROLE paypilot_account_provisioner;
+DO $
+DECLARE reset_email text; completed boolean; invalidated boolean;
+BEGIN
+  SELECT public.paypilot_create_password_reset(
+    'ci-account@example.test', repeat('d',64), now() + interval '30 minutes'
+  ) INTO reset_email;
+  IF reset_email <> 'ci-account@example.test' THEN RAISE EXCEPTION 'password reset recipient lookup failed'; END IF;
+  SELECT public.paypilot_complete_password_reset(
+    repeat('d',64), 'scrypt$16384$8$1
+ || repeat('e',32) || '
+ || repeat('f',128), now()
+  ) INTO completed;
+  IF completed IS NOT TRUE THEN RAISE EXCEPTION 'valid password reset token was not accepted'; END IF;
+  SELECT public.paypilot_invalidate_password_reset(repeat('d',64)) INTO invalidated;
+  IF invalidated IS NOT FALSE THEN RAISE EXCEPTION 'used password reset token must not be reusable'; END IF;
+END $;
+RESET ROLE;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.paypilot_sessions
+    WHERE session_hash = repeat('c',64) AND revoked_at IS NOT NULL
+  ) THEN RAISE EXCEPTION 'password reset must revoke existing sessions'; END IF;
+END $;
+
 ROLLBACK;
