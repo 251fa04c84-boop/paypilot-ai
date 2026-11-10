@@ -2,9 +2,11 @@ name: PostgreSQL integration gates
 
 on:
   push:
-    branches: ["codex/paypilot-real-postgres-staging"]
+    branches:
+      - "codex/paypilot-real-postgres-staging"
+      - "codex/paypilot-human-crafted-ui"
   pull_request:
-    branches: ["main", "codex/postgres-request-scoped-repository"]
+    branches: ["main", "codex/postgres-request-scoped-repository", "codex/paypilot-human-crafted-ui"]
 
 jobs:
   postgres-integration:
