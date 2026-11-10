@@ -22,6 +22,7 @@ const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 class HttpError extends Error { constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; } }
+const DUMMY_PASSWORD_HASH = 'scrypt$16384$8$1$a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1$fc1cf39d547631f7157d87d05fc10779d8b63fffd155dd69944bbacf72e795c6b117e725e8b72e02ef1576a4ccdc8f911bace325beaa7320278b75a3effdefd1';
 
 function createApp(opts = {}) {
   const requestContext = new AsyncLocalStorage();
@@ -249,7 +250,8 @@ function createApp(opts = {}) {
     if (!a.ok || !b.ok) throw new HttpError(429, 'Too many login attempts. Try again later.', { retryAfter: Math.max(a.retryAfter || 0, b.retryAfter || 0) });
     if (!email || email.length > 254 || password.length > 128) throw new HttpError(401, 'Email or password is incorrect.');
     const user = await repository.findUserByEmail(email);
-    if (!user || !(await verifyPassword(password, user.passwordHash))) throw new HttpError(401, 'Email or password is incorrect.');
+    const passwordMatches = await verifyPassword(password, user ? user.passwordHash : DUMMY_PASSWORD_HASH);
+    if (!user || !passwordMatches) throw new HttpError(401, 'Email or password is incorrect.');
     const session = createSessionToken({ secret: sessionSecret });
     await repository.createSession({ sessionHash: session.sessionHash, tenantId: user.tenantId, userId: user.userId, expiresAt: session.expiresAt });
     return { setCookie: serializeSessionCookie(session.token, { secure: isProduction }), json: { user: { id: user.userId, email: user.email } } };
