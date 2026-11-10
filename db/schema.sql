@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS paypilot_users (
   email_normalized TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL CHECK (length(password_hash) BETWEEN 40 AND 300),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  password_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (email_normalized = lower(trim(email_normalized)))
 );
 
