@@ -17,6 +17,7 @@ const { summarize } = require('./lib/summary');
 const { createLimiter } = require('./lib/ratelimit');
 const { createPostgresRepository, createPgPool } = require('./lib/postgres-repository');
 const { createPostgresStore } = require('./lib/postgres-store');
+const { createResendEmailProvider } = require('./lib/email');
 
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -52,6 +53,7 @@ function createApp(opts = {}) {
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
+  const emailProvider = opts.emailProvider || createResendEmailProvider({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, appBaseUrl: baseUrl, fetchImpl: opts.emailFetch || fetch });
   // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
   // Demo-admin controls are development-only. An environment flag must never enable simulated payment settlement in production.
   const demoAdminEnabled = !isProduction && env.ENABLE_DEMO_ADMIN !== 'false';
@@ -265,6 +267,49 @@ function createApp(opts = {}) {
     return { setCookie: clearSessionCookie({ secure: isProduction }), json: { loggedOut: true } };
   });
 
+  route('POST', '/api/auth/password/forgot', async ({ body, req }) => {
+    if (!authEnabled || !emailProvider.configured || typeof repository.createPasswordReset !== 'function') {
+      throw new HttpError(503, 'Password recovery is not configured yet. Please contact support.');
+    }
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    if (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new HttpError(400, 'Enter a valid email address.');
+    const ip = clientIp(req);
+    const a = L.authIp.hit('forgot:' + ip);
+    const b = L.authIdentity.hit('forgot:' + email.toLowerCase());
+    if (!a.ok || !b.ok) throw new HttpError(429, 'Too many password recovery attempts. Try again later.', { retryAfter: Math.max(a.retryAfter || 0, b.retryAfter || 0) });
+    const token = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const recipient = await repository.createPasswordReset({ email, tokenHash, expiresAt });
+    if (recipient) {
+      try {
+        await emailProvider.sendPasswordReset({ to: recipient, token });
+      } catch (error) {
+        if (typeof repository.invalidatePasswordReset === 'function') {
+          try { await repository.invalidatePasswordReset(tokenHash); } catch (_) {}
+        }
+        throw new HttpError(502, 'Password recovery email could not be sent. Please try again later.');
+      }
+    }
+    return { status: 202, json: { message: 'If an account exists for that email, a password reset link will be sent.' } };
+  });
+
+  route('POST', '/api/auth/password/reset', async ({ body, req }) => {
+    if (!authEnabled || typeof repository.completePasswordReset !== 'function') throw new HttpError(503, 'Password recovery is not configured yet.');
+    const token = typeof body.token === 'string' ? body.token : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) throw new HttpError(400, 'This password reset link is invalid or expired.');
+    if (password.length < 12 || password.length > 128) throw new HttpError(400, 'Password must be between 12 and 128 characters.');
+    const ip = clientIp(req);
+    const a = L.authIp.hit('reset:' + ip);
+    if (!a.ok) throw new HttpError(429, 'Too many password reset attempts. Try again later.', { retryAfter: a.retryAfter || 0 });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const passwordHash = await hashPassword(password);
+    const completed = await repository.completePasswordReset({ tokenHash, passwordHash, now: new Date() });
+    if (!completed) throw new HttpError(400, 'This password reset link is invalid or expired.');
+    return { json: { passwordReset: true, message: 'Password updated. Please sign in again.' } };
+  });
+
   route('GET', '/api/auth/me', async ({ headers }) => {
     if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
     const context = await resolveTenantContext(headers);
@@ -275,7 +320,7 @@ function createApp(opts = {}) {
   route('GET', '/api/health', async () => {
     let accountsReady = false;
     if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
-    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
+    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? 'Resend' : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
   });
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
