@@ -9,6 +9,7 @@ function fixture() {
   const sessions = new Map();
   return {
     accountsEnabled: true,
+    async checkAccountProvisioning() { return true; },
     states, users, sessions,
     async withTenant(tenantId, work) {
       const state = structuredClone(states.get(tenantId) || { invoices: [], drafts: [], orders: [], actions: [], proposals: [], settings: {}, processedWebhookEvents: [] });
