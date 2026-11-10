@@ -272,7 +272,7 @@ function createApp(opts = {}) {
       throw new HttpError(503, 'Password recovery is not configured yet. Please contact support.');
     }
     const email = typeof body.email === 'string' ? body.email.trim() : '';
-    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Enter a valid email address.');
+    if (email.length > 254 || !email.includes('@') || email.indexOf('@') !== email.lastIndexOf('@') || !email.slice(email.lastIndexOf('@') + 1).includes('.')) throw new HttpError(400, 'Enter a valid email address.');
     const ip = clientIp(req);
     const a = L.authIp.hit('forgot:' + ip);
     const b = L.authIdentity.hit('forgot:' + email.toLowerCase());
