@@ -41,6 +41,38 @@ AS $$
   LIMIT 1;
 $$;
 
+
+-- Account login must find a user before its tenant context is known. Keep
+-- this cross-tenant lookup inside a narrowly scoped SECURITY DEFINER function;
+-- do not weaken FORCE RLS or grant the app direct tenant-table bypass.
+CREATE OR REPLACE FUNCTION public.paypilot_find_user_by_email(p_email_normalized text)
+RETURNS TABLE (user_id uuid, tenant_id text, email text, password_hash text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+  SELECT u.user_id, u.tenant_id, u.email, u.password_hash
+  FROM public.paypilot_users AS u
+  JOIN public.paypilot_tenants AS t ON t.tenant_id = u.tenant_id
+  WHERE u.email_normalized = lower(trim(p_email_normalized))
+    AND t.status = 'active'
+    AND t.tenant_kind = 'private'
+  LIMIT 1;
+$;
+
+REVOKE ALL ON FUNCTION public.paypilot_find_user_by_email(text) FROM PUBLIC;
+DO $lookup_grants$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_provisioner') THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_find_user_by_email(text) TO paypilot_provisioner';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_account_provisioner') THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_find_user_by_email(text) TO paypilot_account_provisioner';
+  END IF;
+END
+$lookup_grants$;
+
 -- The staging runtime updates a session during logout. PostgreSQL also
 -- requires SELECT on columns used by UPDATE predicates/RETURNING.
 DO $grant$
