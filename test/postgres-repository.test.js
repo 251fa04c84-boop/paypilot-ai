@@ -495,6 +495,6 @@ test('finds private account credentials without an RLS-filtered tenant join', as
   });
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params, ['owner@example.com']);
-  assert.match(calls[0].sql, /FROM paypilot_users WHERE email_normalized = \\$1 LIMIT 1/);
-  assert.doesNotMatch(calls[0].sql, /JOIN\\s+paypilot_tenants/i);
+  assert.match(calls[0].sql, /FROM paypilot_users WHERE email_normalized = \$1 LIMIT 1/);
+  assert.doesNotMatch(calls[0].sql, /JOIN\s+paypilot_tenants/i);
 });
