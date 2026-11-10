@@ -30,16 +30,16 @@ Open Activity and show the timeline/export. State clearly that the app demonstra
 |---|---|---|
 | Public preview health | Save the JSON from `/api/health`; verify storage, AI, PayPal Sandbox and auth fields | Preview health checked 10 Nov 2026; see current operator evidence |
 | Build/deploy | Record Render deploy ID, commit, status and completion time | Latest observed preview deploy: `0337acefabcf947da311e35db2eca8e00da08dda`, live |
-| Automated tests | Save CI run URL and test summary for the exact release commit | Not verified for this hardening PR |
+| Automated tests | Save CI run URL and test summary for the exact release commit | PR #41 merge-ref CI passed 10 Nov 2026: 165 passed, 0 failed, 1 skipped; [Tests run](https://github.com/251fa04c84-boop/paypilot-ai/actions/runs/42779559048) |
 | PayPal checkout | Capture order creation, Sandbox buyer approval, return, capture ID and verified invoice state | Retest required; user previously reported a pre-login Sandbox checkout error |
 | Webhook | Save a real Sandbox webhook delivery and successful signature-verification evidence | Do not substitute mocked unit tests |
-| Tenant isolation | Save real PostgreSQL cross-tenant read/write, session routing and restart/concurrency test results | Earlier PR #28 reports PostgreSQL CI/staging checks; confirm exact release commit before claiming |
+| Tenant isolation | Save real PostgreSQL cross-tenant read/write, session routing and restart/concurrency test results | PR #41 PostgreSQL integration job passed against disposable PostgreSQL 16: RLS tenant isolation, concurrent writes/persistence, and HTTP isolation/capture/webhook/restart integration passed; [PostgreSQL run](https://github.com/251fa04c84-boop/paypilot-ai/actions/runs/42779558831) |
 | AI behaviour | Capture a factual answer, an unavailable-provider fallback and prompt-injection handling | Run against the exact deployed commit |
 | Performance | Record cold-start and warm-request timings plus any Render errors | Not yet measured systematically |
 
 ## Release gates — do not claim complete until verified
-1. Run `npm test` and CI on the exact candidate commit.
-2. Run the real PostgreSQL integration suite against an isolated staging database and verify tenant A cannot read or mutate tenant B.
+1. Run `npm test` and CI on the exact candidate commit. PR #41 currently has passing merge-ref checks; rerun after any further commit and again on the final merge commit.
+2. Run the real PostgreSQL integration suite against an isolated staging database and verify tenant A cannot read or mutate tenant B. PR #41 CI passed this against disposable PostgreSQL 16; repeat against the configured staging service before rollout.
 3. Verify concurrent capture attempts result in one capture and duplicate webhook events do not double-settle.
 4. Complete a fresh PayPal Sandbox buyer checkout from the deployed preview. Record the provider debug ID for any failure; never expose secrets or buyer data.
 5. Verify the preview health endpoint, latest Render deployment, logs, and a cold/warm request sample.
