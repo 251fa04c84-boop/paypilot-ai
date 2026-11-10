@@ -1,6 +1,6 @@
 'use strict';
 const main = document.getElementById('main');
-const state = { tab: 'mission', detail: null, health: null };
+const state = { tab: 'mission', detail: null, health: null, user: null };
 
 const STATUS = { pending: 'waiting for your approval', approved: 'approved, not run yet', rejected: 'rejected', expired: 'expired', executed: 'run: next step is yours', verified: 'verified by PayPal', confirmed: 'you confirmed it was sent', failed: 'blocked or failed', cancelled: 'cancelled' };
 const STCLASS = { pending: 'warn', approved: 'warn', rejected: 'none', expired: 'none', executed: 'cyan', verified: 'ok', confirmed: 'ok', failed: 'bad', cancelled: 'none' };
@@ -21,7 +21,7 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 7000);
 }
 async function api(method, path, body) {
-  const res = await fetch(path, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(path, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
   let data = null; try { data = await res.json(); } catch (_) { /* no body */ }
   if (!res.ok) { const e = new Error((data && data.error) || `Request failed (${res.status})`); e.data = data; e.status = res.status; throw e; }
   return data;
@@ -32,6 +32,72 @@ const lock = (label, fn) => async (ev) => {
   const b = ev.currentTarget, orig = b.textContent; b.disabled = true; b.textContent = label;
   try { await fn(); } catch (e) { toast(e.message); } finally { if (b.isConnected) { b.disabled = false; b.textContent = orig; } }
 };
+
+// ---------- private account access ----------
+const authPanel = document.getElementById('auth-panel');
+const accountButton = document.getElementById('account-button');
+function accountButtonState() {
+  accountButton.textContent = state.user ? 'My account' : 'Sign in';
+  accountButton.onclick = () => openAccountPanel(state.user ? 'account' : 'login');
+}
+async function loadAccount() {
+  try {
+    const result = await api('GET', '/api/auth/me');
+    state.user = result.user || null;
+  } catch (error) {
+    state.user = null;
+  }
+  accountButtonState();
+}
+function openAccountPanel(mode = 'login') {
+  const title = mode === 'register' ? 'Create your private workspace' : mode === 'account' ? 'Your private workspace' : 'Sign in to PayPilot';
+  const description = mode === 'register'
+    ? 'Create a separate workspace for your invoices. Use at least 12 characters for your password.'
+    : mode === 'account'
+      ? 'Your records are loaded from the tenant linked to your signed-in account.'
+      : 'Sign in to open your private invoices and activity.';
+  const close = h('button', { type: 'button', class: 'auth-link', onclick: () => { authPanel.hidden = true; } }, 'Close');
+  const card = h('section', { class: 'auth-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'auth-title' },
+    h('div', { class: 'auth-actions' }, h('span', { class: 'pill ok' }, state.user ? 'PRIVATE ACCOUNT' : 'ACCOUNT ACCESS'), close),
+    h('h2', { id: 'auth-title' }, title),
+    h('p', {}, description));
+  if (mode === 'account' && state.user) {
+    card.append(h('p', {}, 'Account ID: ' + state.user.id));
+    card.append(h('button', { type: 'button', class: 'primary', onclick: async () => {
+      try { await api('POST', '/api/auth/logout', {}); state.user = null; authPanel.hidden = true; accountButtonState(); toast('Signed out.'); location.reload(); }
+      catch (error) { toast(error.message); }
+    } }, 'Sign out'));
+  } else {
+    const email = h('input', { id: 'auth-email', name: 'email', type: 'email', autocomplete: 'username', required: true, maxlength: '254', placeholder: 'you@example.com' });
+    const password = h('input', { id: 'auth-password', name: 'password', type: 'password', autocomplete: mode === 'register' ? 'new-password' : 'current-password', required: true, minlength: '12', maxlength: '128', placeholder: 'At least 12 characters' });
+    const form = h('form', { onsubmit: async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      try {
+        await api('POST', mode === 'register' ? '/api/auth/register' : '/api/auth/login', { email: email.value, password: password.value });
+        authPanel.hidden = true;
+        await loadAccount();
+        await loadStatus();
+        await render();
+        toast(mode === 'register' ? 'Private workspace created.' : 'Signed in to your private workspace.');
+      } catch (error) {
+        toast(error.message);
+      } finally { submit.disabled = false; }
+    } },
+      h('label', { for: 'auth-email' }, 'Email address'), email,
+      h('label', { for: 'auth-password' }, 'Password'), password,
+      h('button', { type: 'submit', class: 'primary' }, mode === 'register' ? 'Create account' : 'Sign in'));
+    card.append(form);
+    card.append(h('p', {}, mode === 'register' ? 'Already have an account?' : 'New to PayPilot?',
+      h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel(mode === 'register' ? 'login' : 'register') }, mode === 'register' ? 'Sign in' : 'Create an account')));
+  }
+  authPanel.replaceChildren(card);
+  authPanel.hidden = false;
+  const first = authPanel.querySelector('input');
+  if (first) first.focus();
+}
+accountButtonState();
 
 // ---------- status ----------
 const pill = (cls, text) => h('span', { class: 'pill ' + cls }, text);
@@ -44,7 +110,7 @@ async function loadStatus() {
   const s = document.getElementById('status'); s.textContent = '';
   try {
     const hh = state.health = await api('GET', '/api/health');
-    s.append(pill(hh.paypal.configured ? 'ok' : 'warn', hh.paypal.configured ? 'PayPal Sandbox: connected' : 'PayPal Sandbox: not configured'), aiPill(hh.ai), pill('warn', 'Restricted demo · demo data only'));
+    s.append(pill(hh.paypal.configured ? 'ok' : 'warn', hh.paypal.configured ? 'PayPal Sandbox: connected' : 'PayPal Sandbox: not configured'), aiPill(hh.ai), state.user ? pill('ok', 'Private workspace · isolated data') : pill('warn', 'Shared judge demo'));
     if (!hh.demo.publicMutationsEnabled) s.append(pill('warn', 'Read-only public preview · interactive actions disabled'));
     if (hh.demo.simulateAi) s.append(pill('bad', 'SIMULATED AI outage'));
     if (hh.demo.simulatePaypal) s.append(pill('bad', 'SIMULATED PayPal outage'));
@@ -511,6 +577,7 @@ function switchTab(tab) {
 document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
 (async function init() {
+  await loadAccount();
   await loadStatus();
   const p = new URLSearchParams(location.search);
   if (p.get('payment') === 'cancelled') toast('Payment cancelled. The invoice is unchanged.');
