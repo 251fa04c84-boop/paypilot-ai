@@ -110,6 +110,8 @@ async function loadStatus() {
   const s = document.getElementById('status'); s.textContent = '';
   try {
     const hh = state.health = await api('GET', '/api/health');
+    accountButton.disabled = !hh.auth?.enabled;
+    accountButton.textContent = hh.auth?.enabled ? (state.user ? 'My account' : 'Sign in') : 'Accounts unavailable';
     s.append(pill(hh.paypal.configured ? 'ok' : 'warn', hh.paypal.configured ? 'PayPal Sandbox: connected' : 'PayPal Sandbox: not configured'), aiPill(hh.ai), state.user ? pill('ok', 'Private workspace · isolated data') : pill('warn', 'Shared judge demo'));
     if (!hh.demo.publicMutationsEnabled) s.append(pill('warn', 'Read-only public preview · interactive actions disabled'));
     if (hh.demo.simulateAi) s.append(pill('bad', 'SIMULATED AI outage'));
