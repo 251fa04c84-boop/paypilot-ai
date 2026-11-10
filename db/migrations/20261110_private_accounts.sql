@@ -28,7 +28,7 @@ RETURNS TABLE (tenant_id text, user_id uuid)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = pg_catalog, public
 SET row_security = off
 AS $$
   SELECT s.tenant_id, s.user_id
@@ -64,7 +64,7 @@ RETURNS TABLE (user_id uuid, tenant_id text, email text, password_hash text)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = pg_catalog, public
 SET row_security = off
 AS $$
   SELECT u.user_id, u.tenant_id, u.email, u.password_hash
