@@ -36,7 +36,7 @@ function createApp(opts = {}) {
     ? (opts.repository || createPostgresRepository({ pool: opts.pgPool || createPgPool({ connectionString: env.DATABASE_URL }), adminPool }))
     : null;
   const sessionSecret = env.SESSION_SECRET || '';
-  const authEnabled = Boolean(pgMode && Buffer.byteLength(sessionSecret, 'utf8') >= 32 && repository && ['createAccount', 'findUserByEmail', 'createSession', 'resolveSession', 'revokeSession'].every((name) => typeof repository[name] === 'function'));
+  const authEnabled = Boolean(pgMode && Buffer.byteLength(sessionSecret, 'utf8') >= 32 && repository && repository.accountsEnabled === true && ['createAccount', 'findUserByEmail', 'createSession', 'resolveSession', 'revokeSession'].every((name) => typeof repository[name] === 'function'));
   const resolveTenantContext = authEnabled ? createTenantContextResolver({ repository, secret: sessionSecret, now: () => Date.now() }) : null;
   const judgeContext = pgMode ? createJudgeDemoContext(pgTenantId) : null;
   const store = opts.store || (pgMode
