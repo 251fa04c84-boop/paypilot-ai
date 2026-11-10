@@ -103,7 +103,7 @@ $grant$;
 
 -- One-time password reset tokens are stored only as SHA-256 hashes.
 CREATE TABLE IF NOT EXISTS public.paypilot_password_reset_tokens (
-  token_hash TEXT PRIMARY KEY CHECK (token_hash ~ '^[a-f0-9]{64}),
+  token_hash TEXT PRIMARY KEY CHECK (token_hash ~ '^[a-f0-9]{64}$'),
   tenant_id TEXT NOT NULL,
   user_id UUID NOT NULL REFERENCES public.paypilot_users(user_id) ON DELETE CASCADE,
   expires_at TIMESTAMPTZ NOT NULL,
@@ -124,10 +124,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 SET row_security = off
-AS $
+AS $$
 DECLARE target_user public.paypilot_users%ROWTYPE;
 BEGIN
-  IF p_token_hash !~ '^[a-f0-9]{64} OR p_expires_at <= now() OR p_expires_at > now() + interval '31 minutes' THEN
+  IF p_token_hash !~ '^[a-f0-9]{64}$' OR p_expires_at <= now() OR p_expires_at > now() + interval '31 minutes' THEN
     RAISE EXCEPTION 'Invalid password reset request';
   END IF;
   SELECT u.* INTO target_user
@@ -143,7 +143,7 @@ BEGIN
   VALUES (p_token_hash, target_user.tenant_id, target_user.user_id, p_expires_at);
   RETURN target_user.email;
 END;
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.paypilot_complete_password_reset(
   p_token_hash TEXT, p_password_hash TEXT, p_now TIMESTAMPTZ
@@ -153,10 +153,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 SET row_security = off
-AS $
+AS $$
 DECLARE target_user_id UUID;
 BEGIN
-  IF p_token_hash !~ '^[a-f0-9]{64} OR length(p_password_hash) < 40 OR length(p_password_hash) > 300 THEN
+  IF p_token_hash !~ '^[a-f0-9]{64}$' OR length(p_password_hash) < 40 OR length(p_password_hash) > 300 THEN
     RETURN FALSE;
   END IF;
   UPDATE public.paypilot_password_reset_tokens t
@@ -176,7 +176,7 @@ BEGIN
   WHERE user_id = target_user_id AND revoked_at IS NULL;
   RETURN TRUE;
 END;
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.paypilot_invalidate_password_reset(p_token_hash TEXT)
 RETURNS BOOLEAN
@@ -184,14 +184,14 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 SET row_security = off
-AS $
+AS $$
 BEGIN
   UPDATE public.paypilot_password_reset_tokens
   SET used_at = now()
   WHERE token_hash = p_token_hash AND used_at IS NULL;
   RETURN FOUND;
 END;
-$;
+$$;
 
 REVOKE ALL ON FUNCTION public.paypilot_create_password_reset(text, text, timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.paypilot_complete_password_reset(text, text, timestamptz) FROM PUBLIC;
