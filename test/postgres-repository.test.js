@@ -474,3 +474,25 @@ test('persists order routing and webhook replay keys in the tenant transaction',
   assert.ok(eventInsert.sql.includes('ON CONFLICT (event_id) DO NOTHING'));
   assert.ok(pool.calls.some((x) => x.sql.includes('UPDATE paypilot_tenant_state')));
 });
+
+
+test('account lookup uses the narrow SECURITY DEFINER resolver before tenant context exists', async () => {
+  const pool = fakePool();
+  const adminPool = {
+    async query(sql, params = []) {
+      pool.calls.push({ scope: 'admin', sql, params });
+      return { rows: [{ user_id: 'user-a', tenant_id: 'acct-a', email: 'person@example.com', password_hash: 'scrypt-hash' }] };
+    }
+  };
+  const repo = createPostgresRepository({ pool, adminPool });
+  const user = await repo.findUserByEmail('person@example.com');
+  assert.deepEqual(user, {
+    userId: 'user-a',
+    tenantId: 'acct-a',
+    email: 'person@example.com',
+    passwordHash: 'scrypt-hash'
+  });
+  const lookup = pool.calls.find((x) => x.scope === 'admin');
+  assert.equal(lookup.sql, 'SELECT user_id, tenant_id, email, password_hash FROM paypilot_find_user_by_email($1)');
+  assert.deepEqual(lookup.params, ['person@example.com']);
+});
