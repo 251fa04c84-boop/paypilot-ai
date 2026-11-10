@@ -29,24 +29,29 @@ test('real PostgreSQL HTTP routes isolate tenants, serialize captures, dedupe we
   const afterRollback = await repo1.withTenant('rls-test-tenant-a', async (tx) => tx.state.invoices.length);
   assert.equal(afterRollback, beforeRollback, 'a failed transaction must not leave partially persisted application state');
   let captures = 0;
+  const completedOrder = (orderId) => {
+    const privateOrder = orderId === 'ORDER-PRIVATE-TEST-01';
+    return {
+      status: 'COMPLETED',
+      purchase_units: [{
+        reference_id: privateOrder ? 'invoice-private' : 'invoice-a',
+        payments: { captures: [{
+          id: privateOrder ? 'CAPTURE-PRIVATE-TEST-01' : 'CAPTURE-A-TEST-01',
+          status: 'COMPLETED',
+          amount: { currency_code: 'USD', value: '125.00' }
+        }] }
+      }]
+    };
+  };
   const paypal = {
     configured: () => true,
     async createOrder() { return { id: 'ORDER-A-TEST-01', approveUrl: 'https://sandbox.example/approve' }; },
-    async captureOrder() {
+    async captureOrder(orderId) {
       captures += 1;
       await new Promise((resolve) => setTimeout(resolve, 80));
-      return {
-        status: 'COMPLETED',
-        purchase_units: [{
-          reference_id: 'invoice-a',
-          payments: { captures: [{
-            id: 'CAPTURE-A-TEST-01',
-            status: 'COMPLETED',
-            amount: { currency_code: 'USD', value: '125.00' }
-          }] }
-        }]
-      };
+      return completedOrder(orderId);
     },
+    async getOrder(orderId) { return completedOrder(orderId); },
     async verifyWebhookSignature() { return true; }
   };
   const env = { NODE_ENV: 'test', PAYPAL_WEBHOOK_ID: 'WH-TEST', PAYPAL_CLIENT_ID: 'test', PAYPAL_CLIENT_SECRET: 'test' };
@@ -109,6 +114,23 @@ test('real PostgreSQL HTTP routes isolate tenants, serialize captures, dedupe we
     assert.equal(eventB.status, 200);
     const eventResults = await Promise.all([eventA.json(), eventB.json()]);
     assert.equal(eventResults.filter((x) => x.duplicate).length, 1);
+
+    // A PayPal callback has no browser cookie: resolve the opaque order ID to the
+    // owning private tenant, then verify the completed order without recapturing it.
+    const privateWebhook = {
+      id: 'WH-EVENT-PRIVATE-01',
+      event_type: 'PAYMENT.CAPTURE.COMPLETED',
+      resource: { id: 'CAPTURE-PRIVATE-TEST-01', supplementary_data: { related_ids: { order_id: 'ORDER-PRIVATE-TEST-01' } } }
+    };
+    const privateEvent = await fetch(baseA1 + '/api/paypal/webhook', {
+      method: 'POST', headers: webhookHeaders, body: JSON.stringify(privateWebhook)
+    });
+    assert.equal(privateEvent.status, 200);
+    const privateEventResult = await privateEvent.json();
+    assert.equal(privateEventResult.captureResult.outcome, 'paid');
+    assert.equal(captures, 1, 'a completed-capture webhook must verify the order without issuing a second capture');
+    const privateInvoiceStatus = await repo1.withTenant('rls-test-private', async (tx) => tx.state.invoices.find((row) => row.id === 'invoice-private').status);
+    assert.equal(privateInvoiceStatus, 'paid', 'webhook must settle the invoice in the owning private tenant');
 
     await close(appA1); await close(appA2); await close(appB);
     await pool1.end();
