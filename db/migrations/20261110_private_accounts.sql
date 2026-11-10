@@ -101,4 +101,96 @@ BEGIN
 END
 $grant$;
 
+-- One-time password reset tokens are stored only as SHA-256 hashes.
+CREATE TABLE IF NOT EXISTS public.paypilot_password_reset_tokens (
+  token_hash TEXT PRIMARY KEY CHECK (token_hash ~ '^[a-f0-9]{64}),
+  tenant_id TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES public.paypilot_users(user_id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (tenant_id) REFERENCES public.paypilot_tenants(tenant_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS paypilot_password_reset_user_expiry
+  ON public.paypilot_password_reset_tokens (user_id, expires_at)
+  WHERE used_at IS NULL;
+REVOKE ALL ON TABLE public.paypilot_password_reset_tokens FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION public.paypilot_create_password_reset(
+  p_email_normalized TEXT, p_token_hash TEXT, p_expires_at TIMESTAMPTZ
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $
+DECLARE target_user public.paypilot_users%ROWTYPE;
+BEGIN
+  IF p_token_hash !~ '^[a-f0-9]{64} OR p_expires_at <= now() OR p_expires_at > now() + interval '31 minutes' THEN
+    RAISE EXCEPTION 'Invalid password reset request';
+  END IF;
+  SELECT u.* INTO target_user
+  FROM public.paypilot_users u
+  JOIN public.paypilot_tenants t ON t.tenant_id = u.tenant_id
+  WHERE u.email_normalized = lower(trim(p_email_normalized))
+    AND t.status = 'active' AND t.tenant_kind = 'private'
+  LIMIT 1;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  DELETE FROM public.paypilot_password_reset_tokens
+  WHERE user_id = target_user.user_id AND used_at IS NULL;
+  INSERT INTO public.paypilot_password_reset_tokens(token_hash, tenant_id, user_id, expires_at)
+  VALUES (p_token_hash, target_user.tenant_id, target_user.user_id, p_expires_at);
+  RETURN target_user.email;
+END;
+$;
+
+CREATE OR REPLACE FUNCTION public.paypilot_complete_password_reset(
+  p_token_hash TEXT, p_password_hash TEXT, p_now TIMESTAMPTZ
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $
+DECLARE target_user_id UUID;
+BEGIN
+  IF p_token_hash !~ '^[a-f0-9]{64} OR length(p_password_hash) < 40 OR length(p_password_hash) > 300 THEN
+    RETURN FALSE;
+  END IF;
+  UPDATE public.paypilot_password_reset_tokens t
+  SET used_at = p_now
+  FROM public.paypilot_users u
+  WHERE t.token_hash = p_token_hash
+    AND t.user_id = u.user_id
+    AND t.used_at IS NULL
+    AND t.expires_at > p_now
+  RETURNING t.user_id INTO target_user_id;
+  IF target_user_id IS NULL THEN RETURN FALSE; END IF;
+  UPDATE public.paypilot_users
+  SET password_hash = p_password_hash, updated_at = p_now
+  WHERE user_id = target_user_id;
+  UPDATE public.paypilot_sessions
+  SET revoked_at = p_now
+  WHERE user_id = target_user_id AND revoked_at IS NULL;
+  RETURN TRUE;
+END;
+$;
+
+REVOKE ALL ON FUNCTION public.paypilot_create_password_reset(text, text, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.paypilot_complete_password_reset(text, text, timestamptz) FROM PUBLIC;
+DO $reset_grants$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_account_provisioner') THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_create_password_reset(text, text, timestamptz) TO paypilot_account_provisioner';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_complete_password_reset(text, text, timestamptz) TO paypilot_account_provisioner';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'paypilot_provisioner') THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_create_password_reset(text, text, timestamptz) TO paypilot_provisioner';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.paypilot_complete_password_reset(text, text, timestamptz) TO paypilot_provisioner';
+  END IF;
+END
+$reset_grants$;
+
 COMMIT;
