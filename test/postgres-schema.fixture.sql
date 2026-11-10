@@ -47,7 +47,8 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO paypilot_sta
 INSERT INTO public.paypilot_tenants (tenant_id,tenant_kind) VALUES ('rls-test-tenant-a','judge_demo'),('rls-test-tenant-b','judge_demo'),('rls-test-private','private');
 INSERT INTO public.paypilot_tenant_state (tenant_id,state,version) VALUES
  ('rls-test-tenant-a','{"invoices":[{"id":"invoice-a","client":"Tenant A fixture","number":"A-001","amount":125,"currency":"USD","issueDate":"2026-11-01","dueDate":"2026-11-15","status":"open","disputed":false}]}'::jsonb,0),
- ('rls-test-tenant-b','{"invoices":[{"id":"invoice-b","client":"Tenant B fixture","number":"B-001","amount":250,"currency":"USD","issueDate":"2026-11-01","dueDate":"2026-11-16","status":"open","disputed":false}]}'::jsonb,0);
+ ('rls-test-tenant-b','{"invoices":[{"id":"invoice-b","client":"Tenant B fixture","number":"B-001","amount":250,"currency":"USD","issueDate":"2026-11-01","dueDate":"2026-11-16","status":"open","disputed":false}]}'::jsonb,0),
+ ('rls-test-private','{"invoices":[{"id":"invoice-private","client":"Private tenant fixture","number":"P-001","amount":125,"currency":"USD","issueDate":"2026-11-01","dueDate":"2026-11-16","status":"open","disputed":false}],"orders":[{"orderId":"ORDER-PRIVATE-TEST-01","invoiceId":"invoice-private","amount":125,"currency":"USD","status":"created","createdAt":"2026-11-09T00:00:00.000Z"}]}'::jsonb,0);
 INSERT INTO public.paypilot_sessions (session_hash,tenant_id,expires_at) VALUES
  (repeat('a',64),'rls-test-tenant-a',now()+interval '1 day'),
  (repeat('b',64),'rls-test-tenant-b',now()+interval '1 day');
