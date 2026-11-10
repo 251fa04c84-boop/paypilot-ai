@@ -502,5 +502,5 @@ test('private account lookup does not join the forced-RLS tenant table before au
   });
   assert.equal(adminCalls.length, 1);
   assert.match(adminCalls[0].sql, /FROM paypilot_users WHERE email_normalized = \$1/);
-  assert.doesNotMatch(adminCalls[0].sql, /JOIN\\s+paypilot_tenants/i);
+  assert.doesNotMatch(adminCalls[0].sql, /JOIN\s+paypilot_tenants/i);
 });
