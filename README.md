@@ -1,14 +1,15 @@
 # PayPilot AI — an auditable agent for invoice recovery
 
-**Live demo:** https://paypilot-ai-1qw8.onrender.com/  
+**Judge preview (PostgreSQL-backed):** https://paypilot-ui-preview.onrender.com/  
+**Original production service:** https://paypilot-ai-1qw8.onrender.com/  
 **Source:** https://github.com/251fa04c84-boop/paypilot-ai  
 **Hackathon:** PayPal AI Hackathon 2026
 
 PayPilot AI is an evidence-first receivables recovery agent for small businesses. It turns a scattered invoice list into a prioritised, explainable recovery plan: deterministic rules identify which accounts need attention, Gemini can translate the evidence into plain language, a human approves the exact next action, and PayPal Sandbox confirms whether money was actually captured. Every decision and outcome is traceable.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
-> **Restricted demo:** there is no login or tenant isolation. Production browser-facing mutations are disabled by default; set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` only when intentionally opening the shared judge workflow. Invoice create/edit/delete/manual settlement remain disabled in production regardless. Verified PayPal capture and signed webhook endpoints remain available. Use only included demo data; do not enter real customer or financial information.  
-> **Storage:** invoice and audit data use a local JSON file. On ephemeral/free hosting, data can reset when the service restarts. This is a hackathon demo, not a production accounting system.
+> **Judge demo:** the public judge workflow remains a shared, no-login demo tenant unless private accounts are explicitly configured. Private account endpoints use scrypt password hashes, signed HttpOnly sessions and session-resolved tenant routing; they remain disabled unless `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID`, `ACCOUNT_PROVISIONING_DATABASE_URL` and a strong `SESSION_SECRET` are configured and `/api/health` reports `auth.enabled: true`. Do not assume private accounts are enabled on a deployed service until that health field is verified. Production browser-facing mutations for the shared demo remain disabled by default. Use demo data only until a real customer deployment has been security-reviewed.  
+> **Deployment distinction:** the judge preview is deployed from `codex/paypilot-human-crafted-ui` and reports PostgreSQL tenant-scoped storage. The original production service is a separate deployment; do not assume both services run the same commit or storage configuration. The public judge preview is still a shared, no-login demo tenant—not private per-user workspaces. This is a hackathon demo, not production accounting software.
 
 ### Public demo mutation switch
 
@@ -97,7 +98,7 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 | Webhook signature verification, missing configuration/headers, replay handling and retry behaviour | Automated tests with a mocked verifier. |
 | Payment validation and agent safety rules | Automated tests with mocked PayPal/Gemini services. |
 | Current CI | 109/109 tests passed on main commit `3bec43b` (8 Nov 2026); later documentation-only benchmark commit `366213a` also passed CI. |
-| Durable database, authentication and tenant isolation | Not implemented. |
+| Account API, scrypt password hashing, signed persisted sessions, logout revocation and session-derived tenant routing | Implemented on feature branch; automated tests are being run. Live deployment remains disabled pending DB-role and environment verification. |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
 
@@ -146,6 +147,9 @@ See [.env.example](.env.example). Configure values only in your local environmen
 | `GEMINI_API_KEY` | Google Gemini API access |
 | `GEMINI_MODEL` | Optional model selection |
 | `APP_BASE_URL`, `SENDER_NAME` | Optional application/reminder metadata |
+| `PG_STORAGE_MODE=judge_demo`, `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID` | PostgreSQL-backed judge demo; pre-provision the demo tenant |
+| `ACCOUNT_PROVISIONING_DATABASE_URL` | Separate least-privilege connection for account + tenant creation and account lookup |
+| `SESSION_SECRET` | At least 32 bytes of high-entropy secret used to sign seven-day sessions; generate with `openssl rand -base64 48` |
 
 **Security:** do not paste secrets into GitHub issues, screenshots, public documentation or chat messages. Use demo data only. Free-tier AI provider terms may include use of prompts for service improvement; never submit personal or confidential data.
 

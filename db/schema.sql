@@ -16,6 +16,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS paypilot_one_judge_demo_tenant
   ON paypilot_tenants (tenant_kind)
   WHERE tenant_kind = 'judge_demo';
 
+CREATE TABLE IF NOT EXISTS paypilot_users (
+  user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NOT NULL UNIQUE REFERENCES paypilot_tenants(tenant_id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  normalized_email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL CHECK (length(password_hash) BETWEEN 40 AND 300),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (normalized_email = lower(trim(normalized_email)))
+);
+
 CREATE TABLE IF NOT EXISTS paypilot_tenant_state (
   tenant_id TEXT PRIMARY KEY REFERENCES paypilot_tenants(tenant_id) ON DELETE CASCADE,
   state JSONB NOT NULL DEFAULT '{"invoices":[],"drafts":[],"orders":[],"actions":[],"proposals":[],"settings":{}}'::jsonb,
@@ -27,12 +38,17 @@ CREATE TABLE IF NOT EXISTS paypilot_tenant_state (
 CREATE TABLE IF NOT EXISTS paypilot_sessions (
   session_hash TEXT PRIMARY KEY CHECK (session_hash ~ '^[a-f0-9]{64}$'),
   tenant_id TEXT NOT NULL REFERENCES paypilot_tenants(tenant_id) ON DELETE CASCADE,
+  user_id UUID REFERENCES paypilot_users(user_id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ NOT NULL,
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   revoked_at TIMESTAMPTZ,
   CHECK (expires_at > created_at)
 );
+
+CREATE INDEX IF NOT EXISTS paypilot_sessions_user_expiry
+  ON paypilot_sessions (user_id, expires_at)
+  WHERE revoked_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS paypilot_sessions_tenant_expiry
   ON paypilot_sessions (tenant_id, expires_at)

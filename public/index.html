@@ -3,26 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#080A12">
-<title>PayPilot AI: payment recovery agent</title>
-<meta name="description" content="An AI agent for invoice recovery: it analyses overdue invoices, recommends an action, asks for your approval, runs only approved actions, verifies payments with PayPal, and keeps an audit trail.">
-<link rel="stylesheet" href="/style.css">
+<meta name="theme-color" content="#f3f0e8">
+<title>PayPilot — Receivables workspace</title>
+<meta name="description" content="A clear, approval-led workspace for reviewing overdue invoices and verifying PayPal Sandbox payments.">
+<link rel="stylesheet" href="/style.css?v=20261109">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to workspace</a>
 <header class="top">
-  <h1>PayPilot <span>AI</span></h1>
-  <p class="sub">Payment recovery agent · Recovery Mission Control</p>
-  <div id="status" class="status" aria-live="polite"></div>
+  <div class="brand-lockup">
+    <span class="brand-mark" aria-hidden="true">P<span>.</span></span>
+    <div class="brand-copy">
+      <h1>PayPilot</h1>
+      <p class="sub">Receivables workspace</p>
+    </div>
+    <span class="brand-edition">DEMO ENVIRONMENT</span>
+  </div>
+  <div class="header-actions"><div id="status" class="status" aria-live="polite"></div><button id="account-button" class="account-button" type="button">Sign in</button></div>
 </header>
+<div id="auth-panel" class="auth-overlay" hidden></div>
 <main id="main" tabindex="-1"></main>
-<nav class="tabs" aria-label="Sections">
-  <button data-tab="mission" aria-current="page">Mission</button>
+<nav class="tabs" aria-label="Workspace sections">
+  <button data-tab="mission" aria-current="page">Overview</button>
   <button data-tab="approvals">Approvals<span id="badge" class="count" hidden></span></button>
   <button data-tab="invoices">Invoices</button>
-  <button data-tab="assistant">AI Assistant</button>
-  <button data-tab="activity">Activity</button>
+  <button data-tab="assistant">Assistant</button>
+  <button data-tab="activity">Audit log</button>
 </nav>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="/app.js"></script>
+<script src="/app.js?v=20261110-auth1" defer></script>
 </body>
 </html>

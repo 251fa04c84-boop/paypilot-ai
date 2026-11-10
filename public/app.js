@@ -1,6 +1,6 @@
 'use strict';
 const main = document.getElementById('main');
-const state = { tab: 'mission', detail: null, health: null };
+const state = { tab: 'mission', detail: null, health: null, user: null };
 
 const STATUS = { pending: 'waiting for your approval', approved: 'approved, not run yet', rejected: 'rejected', expired: 'expired', executed: 'run: next step is yours', verified: 'verified by PayPal', confirmed: 'you confirmed it was sent', failed: 'blocked or failed', cancelled: 'cancelled' };
 const STCLASS = { pending: 'warn', approved: 'warn', rejected: 'none', expired: 'none', executed: 'cyan', verified: 'ok', confirmed: 'ok', failed: 'bad', cancelled: 'none' };
@@ -21,7 +21,7 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 7000);
 }
 async function api(method, path, body) {
-  const res = await fetch(path, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(path, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
   let data = null; try { data = await res.json(); } catch (_) { /* no body */ }
   if (!res.ok) { const e = new Error((data && data.error) || `Request failed (${res.status})`); e.data = data; e.status = res.status; throw e; }
   return data;
@@ -32,6 +32,72 @@ const lock = (label, fn) => async (ev) => {
   const b = ev.currentTarget, orig = b.textContent; b.disabled = true; b.textContent = label;
   try { await fn(); } catch (e) { toast(e.message); } finally { if (b.isConnected) { b.disabled = false; b.textContent = orig; } }
 };
+
+// ---------- private account access ----------
+const authPanel = document.getElementById('auth-panel');
+const accountButton = document.getElementById('account-button');
+function accountButtonState() {
+  accountButton.textContent = state.user ? 'My account' : 'Sign in';
+  accountButton.onclick = () => openAccountPanel(state.user ? 'account' : 'login');
+}
+async function loadAccount() {
+  try {
+    const result = await api('GET', '/api/auth/me');
+    state.user = result.user || null;
+  } catch (error) {
+    state.user = null;
+  }
+  accountButtonState();
+}
+function openAccountPanel(mode = 'login') {
+  const title = mode === 'register' ? 'Create your private workspace' : mode === 'account' ? 'Your private workspace' : 'Sign in to PayPilot';
+  const description = mode === 'register'
+    ? 'Create a separate workspace for your invoices. Use at least 12 characters for your password.'
+    : mode === 'account'
+      ? 'Your records are loaded from the tenant linked to your signed-in account.'
+      : 'Sign in to open your private invoices and activity.';
+  const close = h('button', { type: 'button', class: 'auth-link', onclick: () => { authPanel.hidden = true; } }, 'Close');
+  const card = h('section', { class: 'auth-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'auth-title' },
+    h('div', { class: 'auth-actions' }, h('span', { class: 'pill ok' }, state.user ? 'PRIVATE ACCOUNT' : 'ACCOUNT ACCESS'), close),
+    h('h2', { id: 'auth-title' }, title),
+    h('p', {}, description));
+  if (mode === 'account' && state.user) {
+    card.append(h('p', {}, 'Account ID: ' + state.user.id));
+    card.append(h('button', { type: 'button', class: 'primary', onclick: async () => {
+      try { await api('POST', '/api/auth/logout', {}); state.user = null; authPanel.hidden = true; accountButtonState(); toast('Signed out.'); location.reload(); }
+      catch (error) { toast(error.message); }
+    } }, 'Sign out'));
+  } else {
+    const email = h('input', { id: 'auth-email', name: 'email', type: 'email', autocomplete: 'username', required: true, maxlength: '254', placeholder: 'you@example.com' });
+    const password = h('input', { id: 'auth-password', name: 'password', type: 'password', autocomplete: mode === 'register' ? 'new-password' : 'current-password', required: true, minlength: '12', maxlength: '128', placeholder: 'At least 12 characters' });
+    const form = h('form', { onsubmit: async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      try {
+        await api('POST', mode === 'register' ? '/api/auth/register' : '/api/auth/login', { email: email.value, password: password.value });
+        authPanel.hidden = true;
+        await loadAccount();
+        await loadStatus();
+        await render();
+        toast(mode === 'register' ? 'Private workspace created.' : 'Signed in to your private workspace.');
+      } catch (error) {
+        toast(error.message);
+      } finally { submit.disabled = false; }
+    } },
+      h('label', { for: 'auth-email' }, 'Email address'), email,
+      h('label', { for: 'auth-password' }, 'Password'), password,
+      h('button', { type: 'submit', class: 'primary' }, mode === 'register' ? 'Create account' : 'Sign in'));
+    card.append(form);
+    card.append(h('p', {}, mode === 'register' ? 'Already have an account?' : 'New to PayPilot?',
+      h('button', { type: 'button', class: 'auth-link', onclick: () => openAccountPanel(mode === 'register' ? 'login' : 'register') }, mode === 'register' ? 'Sign in' : 'Create an account')));
+  }
+  authPanel.replaceChildren(card);
+  authPanel.hidden = false;
+  const first = authPanel.querySelector('input');
+  if (first) first.focus();
+}
+accountButtonState();
 
 // ---------- status ----------
 const pill = (cls, text) => h('span', { class: 'pill ' + cls }, text);
@@ -44,7 +110,9 @@ async function loadStatus() {
   const s = document.getElementById('status'); s.textContent = '';
   try {
     const hh = state.health = await api('GET', '/api/health');
-    s.append(pill(hh.paypal.configured ? 'ok' : 'warn', hh.paypal.configured ? 'PayPal Sandbox: connected' : 'PayPal Sandbox: not configured'), aiPill(hh.ai), pill('warn', 'Restricted demo · demo data only'));
+    accountButton.disabled = !hh.auth?.enabled;
+    accountButton.textContent = hh.auth?.enabled ? (state.user ? 'My account' : 'Sign in') : 'Accounts unavailable';
+    s.append(pill(hh.paypal.configured ? 'ok' : 'warn', hh.paypal.configured ? 'PayPal Sandbox: connected' : 'PayPal Sandbox: not configured'), aiPill(hh.ai), state.user ? pill('ok', 'Private workspace · isolated data') : pill('warn', 'Shared judge demo'));
     if (!hh.demo.publicMutationsEnabled) s.append(pill('warn', 'Read-only public preview · interactive actions disabled'));
     if (hh.demo.simulateAi) s.append(pill('bad', 'SIMULATED AI outage'));
     if (hh.demo.simulatePaypal) s.append(pill('bad', 'SIMULATED PayPal outage'));
@@ -179,19 +247,45 @@ function proposalCard(p) {
 
 // ---------- views ----------
 async function viewMission() {
-  const [q, all, open] = await Promise.all([api('GET', '/api/recovery'), api('GET', '/api/invoices'), api('GET', '/api/proposals?open=1')]);
-  const sum = all.length ? await api('GET', '/api/summary') : [];
+  // Keep the overview useful when a secondary endpoint is unavailable.
+  // Previously Promise.all made one failed proposals request blank the entire page.
+  const errors = [];
+  const [qResult, allResult, proposalsResult] = await Promise.allSettled([
+    api('GET', '/api/recovery'),
+    api('GET', '/api/invoices'),
+    api('GET', '/api/proposals?open=1'),
+  ]);
+  const q = qResult.status === 'fulfilled' && Array.isArray(qResult.value) ? qResult.value : [];
+  const all = allResult.status === 'fulfilled' && Array.isArray(allResult.value) ? allResult.value : [];
+  const open = proposalsResult.status === 'fulfilled' && Array.isArray(proposalsResult.value) ? proposalsResult.value : [];
+  if (qResult.status === 'rejected') errors.push('Recovery queue could not load: ' + qResult.reason.message);
+  if (allResult.status === 'rejected') errors.push('Invoices could not load: ' + allResult.reason.message);
+  if (proposalsResult.status === 'rejected') errors.push('Approval count could not load: ' + proposalsResult.reason.message);
+  let sum = [];
+  if (all.length) {
+    try {
+      const summary = await api('GET', '/api/summary');
+      if (Array.isArray(summary)) sum = summary;
+      else if (summary && typeof summary === 'object' && summary.currency) sum = [summary];
+      else throw new Error('Unexpected summary response format');
+    } catch (e) { errors.push('Financial summary could not load: ' + e.message); }
+  }
   const waiting = open.filter((p) => p.status === 'pending' || p.status === 'approved');
   // Count every overdue open invoice, including disputed ones; disputes are excluded from the active queue but remain part of total exposure.
   const overdueCount = sum.reduce((total, currency) => total + currency.overdueCount, 0);
   const disputedCount = all.filter((i) => i.status === 'open' && i.disputed).length;
   const openCount = all.filter((i) => i.status === 'open').length;
   main.replaceChildren(
+    errors.length ? h('section', { class: 'card warnbox', role: 'status' },
+      h('strong', {}, 'Some overview data is unavailable'),
+      h('ul', { class: 'list' }, errors.map((message) => h('li', {}, message))),
+      h('p', { class: 'muted small' }, 'The rest of the workspace remains available. Try refreshing, or open Invoices and Approvals directly.')
+    ) : null,
     h('section', { class: 'mission-hero' },
       h('div', { class: 'hero-copy' },
-        h('div', { class: 'eyebrow' }, 'PAYPILOT INTELLIGENCE · RECEIVABLES COMMAND CENTER'),
-        h('h2', {}, 'Turn overdue invoices into verified recoveries.'),
-        h('p', {}, 'Prioritise the right account, understand the evidence, approve the next move, and verify payment with PayPal Sandbox.'),
+        h('div', { class: 'eyebrow' }, 'RECEIVABLES / DAILY WORKSPACE'),
+        h('h2', {}, 'See what is overdue. Decide what happens next.'),
+        h('p', {}, 'A practical view of unpaid work, the reasons behind each recommendation, and the next decision waiting for you.'),
         h('div', { class: 'hero-tags' }, pill('ok', 'Rules-led decisions'), pill('warn', 'Human approval required'), pill('none', 'Sandbox payments only'))),
       h('div', { class: 'hero-mark', 'aria-hidden': 'true' }, h('span', { class: 'hero-orbit orbit-one' }), h('span', { class: 'hero-orbit orbit-two' }), h('span', { class: 'hero-core' }, 'P'))),
     h('section', { class: 'command-strip' },
@@ -215,9 +309,9 @@ async function viewMission() {
     h('button', { class: 'primary', onclick: () => switchTab('approvals') }, 'Review approvals')));
   if (all.length > 0) {
     main.append(h('section', { class: 'autopilot-panel' },
-      h('div', { class: 'autopilot-heading' }, h('div', {}, h('div', { class: 'eyebrow' }, 'CONTROLLED AUTONOMY'), h('h3', {}, 'Portfolio Autopilot')),
+      h('div', { class: 'autopilot-heading' }, h('div', {}, h('div', { class: 'eyebrow' }, 'CONTROLLED AUTONOMY'), h('h3', {}, 'Portfolio review')),
         h('span', { class: 'badge ok' }, 'Observe · analyse · propose')),
-      h('p', { class: 'muted' }, 'One sweep evaluates every open invoice, ranks urgency using explainable rules, and stages eligible recovery proposals for your review. Disputes, recent reminders and paid invoices are protected.'),
+      h('p', { class: 'muted' }, 'Review every open invoice against the same published rules. Eligible next steps are prepared for your approval; disputed and recently contacted accounts are held back.'),
       h('div', { class: 'actions' },
         h('button', { class: 'primary', onclick: lock('Scanning portfolio…', async () => {
           const r = await api('POST', '/api/agent/triage/apply');
@@ -415,12 +509,12 @@ function draftCard(d) {
 }
 
 const assistantHistory = [
-  { sender: 'assistant', text: 'Hello! I am PayPilot AI. Ask me about your overdue accounts, recovery risks, disputed invoices, or specific client payment details. All recovery actions require your explicit approval.', source: 'system' },
+  { sender: 'assistant', text: 'Hello. I can help you review overdue accounts, payment status and disputes. I will show the available evidence, and any recovery action still needs your approval.', source: 'system' },
 ];
 
 async function viewAssistant() {
-  main.replaceChildren(h('h2', {}, 'AI Recovery Assistant'),
-    h('p', { class: 'muted' }, 'Conversational agent backed by deterministic verified facts and tool access.'));
+  main.replaceChildren(h('h2', {}, 'Ask about your receivables'),
+    h('p', { class: 'muted' }, 'Ask a question about the invoice records. Answers use the available workspace data; actions still require your approval.'));
 
   const thread = h('div', { class: 'chat-thread' });
   const renderThread = () => {
@@ -451,11 +545,11 @@ async function viewAssistant() {
       h('button', { class: 'primary', type: 'submit' }, 'Ask')));
 
   const quickPills = h('div', { class: 'quick-pills' },
-    h('button', { class: 'btn-pill', onclick: () => ask('What is our total outstanding and overdue amount?') }, '📊 Total Overdue'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Who should I chase today?') }, '🎯 Top Priorities'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Show disputed invoices') }, '⏸️ Disputed Invoices'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Status of Northwind Cafe') }, '☕ Northwind Cafe'),
-    h('button', { class: 'btn-pill', onclick: () => ask('Status of Harbor Dental') }, '🦷 Harbor Dental'));
+    h('button', { class: 'btn-pill', onclick: () => ask('What is our total outstanding and overdue amount?') }, 'Total overdue'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Who should I chase today?') }, "Today's priorities"),
+    h('button', { class: 'btn-pill', onclick: () => ask('Show disputed invoices') }, 'Disputed invoices'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Status of Northwind Cafe') }, 'Northwind Cafe'),
+    h('button', { class: 'btn-pill', onclick: () => ask('Status of Harbor Dental') }, 'Harbor Dental'));
 
   renderThread();
   main.append(quickPills, thread, form);
@@ -485,6 +579,7 @@ function switchTab(tab) {
 document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
 (async function init() {
+  await loadAccount();
   await loadStatus();
   const p = new URLSearchParams(location.search);
   if (p.get('payment') === 'cancelled') toast('Payment cancelled. The invoice is unchanged.');

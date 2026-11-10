@@ -1,5 +1,10 @@
 'use strict';
 const http = require('http');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const crypto = require('node:crypto');
+const { hashPassword, verifyPassword } = require('./lib/password');
+const { COOKIE_NAME, createSessionToken, readCookie, serializeSessionCookie, clearSessionCookie } = require('./lib/session');
+const { createTenantContextResolver, createJudgeDemoContext } = require('./lib/tenant-context');
 const fs = require('fs');
 const path = require('path');
 const { createStore, addAction, newId, closeDrafts, closeProposals } = require('./lib/store');
@@ -17,8 +22,10 @@ const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 class HttpError extends Error { constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; } }
+const DUMMY_PASSWORD_HASH = 'scrypt$16384$8$1$a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1$fc1cf39d547631f7157d87d05fc10779d8b63fffd155dd69944bbacf72e795c6b117e725e8b72e02ef1576a4ccdc8f911bace325beaa7320278b75a3effdefd1';
 
 function createApp(opts = {}) {
+  const requestContext = new AsyncLocalStorage();
   const env = opts.env || process.env;
   const isProduction = env.NODE_ENV === 'production' || env.RENDER === 'true';
   const port = Number(env.PORT) || 3000;
@@ -27,9 +34,14 @@ function createApp(opts = {}) {
   const pgMode = env.PG_STORAGE_MODE === 'judge_demo' || Boolean(opts.repository);
   const pgTenantId = opts.tenantId || env.JUDGE_DEMO_TENANT_ID || '';
   if (pgMode && !pgTenantId.trim()) throw new Error('JUDGE_DEMO_TENANT_ID is required in PostgreSQL judge-demo mode.');
+  const adminPool = opts.adminPool || (env.ACCOUNT_PROVISIONING_DATABASE_URL ? createPgPool({ connectionString: env.ACCOUNT_PROVISIONING_DATABASE_URL, max: 2 }) : null);
   const repository = pgMode
-    ? (opts.repository || createPostgresRepository({ pool: opts.pgPool || createPgPool({ connectionString: env.DATABASE_URL }) }))
+    ? (opts.repository || createPostgresRepository({ pool: opts.pgPool || createPgPool({ connectionString: env.DATABASE_URL }), adminPool }))
     : null;
+  const sessionSecret = env.SESSION_SECRET || '';
+  const authEnabled = Boolean(pgMode && Buffer.byteLength(sessionSecret, 'utf8') >= 32 && repository && repository.accountsEnabled === true && ['createAccount', 'findUserByEmail', 'createSession', 'resolveSession', 'revokeSession', 'checkAccountProvisioning'].every((name) => typeof repository[name] === 'function'));
+  const resolveTenantContext = authEnabled ? createTenantContextResolver({ repository, secret: sessionSecret, now: () => Date.now() }) : null;
+  const judgeContext = pgMode ? createJudgeDemoContext(pgTenantId) : null;
   const store = opts.store || (pgMode
     ? createPostgresStore({ repository, tenantId: pgTenantId })
     : createStore(env.DATA_FILE || path.join(__dirname, 'data', 'db.json')));
@@ -73,6 +85,8 @@ function createApp(opts = {}) {
     draftIp: createLimiter({ windowMs: 60000, max: lim.draftIp || 5 }),
     draftAll: createLimiter({ windowMs: 60000, max: lim.draftAll || 8 }),
     pay: createLimiter({ windowMs: 60000, max: lim.pay || 20 }),
+    authIp: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.authIp || 12 }),
+    authIdentity: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.authIdentity || 6 }),
   };
   // Never trust client-supplied X-Forwarded-For by default: it is trivial to spoof and bypass IP limits.
 // Enable TRUST_PROXY=true only when the hosting proxy is configured to overwrite this header.
@@ -94,7 +108,7 @@ function createApp(opts = {}) {
   const find = (list, id, label) => { const x = list.find((i) => i.id === id); if (!x) throw new HttpError(404, `${label} not found.`); return x; };
   const withA = (inv) => Object.assign({}, inv, { assessment: P.assess(inv, todayStr()) });
   const requireMutableDemo = () => {
-    if (isProduction) throw new HttpError(403, 'Invoice editing is disabled on the public demo. Use the supplied judge scenarios.');
+    if (isProduction && requestContext.getStore()?.kind !== 'private') throw new HttpError(403, 'Invoice editing is disabled on the shared public demo. Sign in to use a private workspace.');
   };
 
   function cleanInvoice(b, base = {}) {
@@ -202,7 +216,67 @@ function createApp(opts = {}) {
     routes.push({ method, re, keys, handler });
   };
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
+  route('POST', '/api/auth/register', async ({ body, req }) => {
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const normalizedEmail = email.toLowerCase();
+    const password = body.password;
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Enter a valid email address.');
+    if (typeof password !== 'string' || password.length < 12 || password.length > 128) throw new HttpError(400, 'Password must be between 12 and 128 characters.');
+    const ip = clientIp(req);
+    const a = L.authIp.hit(ip);
+    const b = L.authIdentity.hit('register:' + normalizedEmail);
+    if (!a.ok || !b.ok) throw new HttpError(429, 'Too many account attempts. Try again later.', { retryAfter: Math.max(a.retryAfter || 0, b.retryAfter || 0) });
+    const passwordHash = await hashPassword(password);
+    let user;
+    try {
+      user = await repository.createAccount({ tenantId: 'acct_' + crypto.randomUUID(), email, normalizedEmail, passwordHash });
+    } catch (error) {
+      if (error.code === 'ACCOUNT_EXISTS') throw new HttpError(409, 'An account with that email already exists.');
+      throw error;
+    }
+    const session = createSessionToken({ secret: sessionSecret });
+    await repository.createSession({ sessionHash: session.sessionHash, tenantId: user.tenantId, userId: user.userId, expiresAt: session.expiresAt });
+    return { status: 201, setCookie: serializeSessionCookie(session.token, { secure: isProduction }), json: { user: { id: user.userId, email: user.email } } };
+  });
+
+  route('POST', '/api/auth/login', async ({ body, req }) => {
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const ip = clientIp(req);
+    const a = L.authIp.hit(ip);
+    const b = L.authIdentity.hit('login:' + (email.slice(0, 254) || 'missing'));
+    if (!a.ok || !b.ok) throw new HttpError(429, 'Too many login attempts. Try again later.', { retryAfter: Math.max(a.retryAfter || 0, b.retryAfter || 0) });
+    if (!email || email.length > 254 || password.length > 128) throw new HttpError(401, 'Email or password is incorrect.');
+    const user = await repository.findUserByEmail(email);
+    const passwordMatches = await verifyPassword(password, user ? user.passwordHash : DUMMY_PASSWORD_HASH);
+    if (!user || !passwordMatches) throw new HttpError(401, 'Email or password is incorrect.');
+    const session = createSessionToken({ secret: sessionSecret });
+    await repository.createSession({ sessionHash: session.sessionHash, tenantId: user.tenantId, userId: user.userId, expiresAt: session.expiresAt });
+    return { setCookie: serializeSessionCookie(session.token, { secure: isProduction }), json: { user: { id: user.userId, email: user.email } } };
+  });
+
+  route('POST', '/api/auth/logout', async ({ headers }) => {
+    if (authEnabled) {
+      const context = await resolveTenantContext(headers);
+      if (context) await repository.revokeSession(context.sessionHash, context.tenantId);
+    }
+    return { setCookie: clearSessionCookie({ secure: isProduction }), json: { loggedOut: true } };
+  });
+
+  route('GET', '/api/auth/me', async ({ headers }) => {
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
+    const context = await resolveTenantContext(headers);
+    if (!context) throw new HttpError(401, 'Sign in to access your account.');
+    return { json: { user: { id: context.userId } } };
+  });
+
+  route('GET', '/api/health', async () => {
+    let accountsReady = false;
+    if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
+    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
+  });
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     requireMutableDemo();
@@ -787,17 +861,28 @@ function createApp(opts = {}) {
           }
         }
       }
-      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
-        throw new HttpError(403, 'Interactive demo actions are disabled on this public deployment.');
-      }
       const blocked = checkLimits(req, url.pathname);
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
       const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
-      const invoke = () => m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams) });
-      // In PostgreSQL mode every API route executes against the server-configured
-      // judge tenant inside one transaction; clients cannot choose a tenant ID.
-      const out = pgMode ? await store.runInTenant(invoke) : await invoke();
+      const authPath = url.pathname.startsWith('/api/auth/');
+      let tenantContext = judgeContext;
+      const invoke = () => requestContext.run(tenantContext, () => m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams), req }));
+      if (pgMode && !authPath) {
+        const sessionCookie = readCookie(req.headers.cookie || '', COOKIE_NAME);
+        if (sessionCookie) {
+          if (!authEnabled) throw new HttpError(401, 'This session cannot be used on this deployment.');
+          tenantContext = await resolveTenantContext(req.headers);
+          if (!tenantContext) throw new HttpError(401, 'Session is invalid or expired. Sign in again.');
+        }
+      }
+      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !authPath && (!tenantContext || tenantContext.kind !== 'private') && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
+        throw new HttpError(403, 'Interactive judge-demo actions are disabled on this deployment.');
+      }
+      // No cookie means the explicitly configured judge demo. A valid cookie means
+      // private data is loaded only from the tenant resolved by the signed session.
+      const out = pgMode && !authPath ? await store.runInTenant(invoke, tenantContext.tenantId) : await invoke();
+      if (out.setCookie) res.setHeader('Set-Cookie', out.setCookie);
       if (out.redirect) { res.writeHead(302, { Location: out.redirect }); return res.end(); }
       if (out.html) { res.writeHead(out.status || 200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(out.html); }
       if (out.csv) {
