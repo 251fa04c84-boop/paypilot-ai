@@ -132,6 +132,7 @@ function openAccountPanel(mode = 'login') {
   if (first) first.focus();
 }
 accountButtonState();
+if (new URLSearchParams(location.search).has('reset_token')) openAccountPanel('reset');
 
 // ---------- status ----------
 const pill = (cls, text) => h('span', { class: 'pill ' + cls }, text);
