@@ -289,7 +289,7 @@ function createApp(opts = {}) {
       throw new HttpError(429, 'Too many reset requests. Try again later.', { retryAfter: Math.max(ipLimit.retryAfter || 0, identityLimit.retryAfter || 0) });
     }
     // The response is identical whether or not the address belongs to an account.
-    if (email.length <= 254 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    if (email.length <= 254 && /^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(email)) {
       try {
         const user = await repository.findUserByEmail(email);
         if (user) {
