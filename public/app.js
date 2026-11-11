@@ -193,6 +193,7 @@ function invoiceCard(inv, a, onOpen) {
     h('div', { class: 'actions invoice-actions' }, h('button', { class: 'primary', onclick: onOpen }, 'Open invoice')));
 }
 const tile = (label, value, cur, sub) => h('div', { class: 'tile' }, h('div', { class: 'muted small' }, label), h('div', { class: 'big' }, `${Number(value).toFixed(2)} ${cur}`), h('div', { class: 'muted small' }, sub));
+const countTile = (label, value, sub) => h('div', { class: 'tile' }, h('div', { class: 'muted small' }, label), h('div', { class: 'big' }, String(Number(value) || 0)), h('div', { class: 'muted small' }, sub));
 function totals(sum) {
   return sum.map((c) => h('div', { class: 'card glow' }, h('div', { class: 'row' }, h('span', { class: 'name' }, `Recovery metrics (${c.currency})`), h('span', { class: 'badge none' }, 'plain arithmetic, no AI')),
     h('div', { class: 'tiles' },
@@ -200,7 +201,8 @@ function totals(sum) {
       tile('Overdue', c.overdue, c.currency, `${c.overdueCount} invoice${c.overdueCount === 1 ? '' : 's'}`),
       tile('At risk (30+ days late)', c.atRisk, c.currency, `${c.atRiskCount} invoice${c.atRiskCount === 1 ? '' : 's'}`),
       tile('Disputed (paused)', c.disputed, c.currency, `${c.disputedCount} invoice${c.disputedCount === 1 ? '' : 's'}`),
-      tile('Paid via PayPal Sandbox', c.paidViaPayPal, c.currency, 'verified captures'))));
+      tile('Paid via PayPal Sandbox', c.paidViaPayPal, c.currency, `${c.paidViaPayPalCount || 0} verified capture${c.paidViaPayPalCount === 1 ? '' : 's'}`),
+      countTile('Operator-confirmed reminders', c.remindersConfirmed, 'User-confirmed; delivery not verified'))));
 }
 function auditClass(t) {
   if (['action_blocked', 'verification_failed', 'payment_failed', 'duplicate_payment'].includes(t)) return 't-blocked';
