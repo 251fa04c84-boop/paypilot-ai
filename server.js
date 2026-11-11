@@ -17,7 +17,7 @@ const { summarize } = require('./lib/summary');
 const { createLimiter } = require('./lib/ratelimit');
 const { createPostgresRepository, createPgPool } = require('./lib/postgres-repository');
 const { createPostgresStore } = require('./lib/postgres-store');
-const { createResendEmailProvider } = require('./lib/email');
+const { createResendEmailProvider, createBrevoEmailProvider } = require('./lib/email');
 
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -53,7 +53,7 @@ function createApp(opts = {}) {
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
-  const emailProvider = opts.emailProvider || createResendEmailProvider({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, appBaseUrl: baseUrl, fetchImpl: opts.emailFetch || fetch });
+  const emailOptions = { from: env.EMAIL_FROM, appBaseUrl: baseUrl, fetchImpl: opts.emailFetch || fetch };\n  const emailProvider = opts.emailProvider || (env.BREVO_API_KEY\n    ? createBrevoEmailProvider({ ...emailOptions, apiKey: env.BREVO_API_KEY })\n    : createResendEmailProvider({ ...emailOptions, apiKey: env.RESEND_API_KEY }));
   // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
   // Demo-admin controls are development-only. An environment flag must never enable simulated payment settlement in production.
   const demoAdminEnabled = !isProduction && env.ENABLE_DEMO_ADMIN !== 'false';
@@ -320,7 +320,7 @@ function createApp(opts = {}) {
   route('GET', '/api/health', async () => {
     let accountsReady = false;
     if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
-    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? 'Resend' : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
+    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? emailProvider.provider : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
   });
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
