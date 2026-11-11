@@ -46,6 +46,18 @@ The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. Public 
 - Staging health and PostgreSQL integration checks were verified on 11 November 2026. Password-reset email is not live until a provider key and verified sender are configured. Live webhook delivery to staging has not been independently verified.
 - This is a hackathon demonstration, not production accounting software. Do not claim improved recovery rates, faster payments, hours saved, or real customer outcomes without a measured pilot.
 
+
+## Payment reconciliation preview
+
+1. Open **Reconcile** and paste a PayPal transaction CSV export.
+2. Required columns: invoice number, amount and currency. Include transaction ID and provider status whenever available.
+3. Run **Preview reconciliation**. The preview is read-only and never changes invoice or payment state.
+4. A row becomes a review candidate only when the invoice number, amount and currency match exactly and a supplied provider status is completed/captured/successful.
+5. Mismatches, missing status, pending payments, duplicate transaction IDs, disputed invoices, already-paid invoices, ambiguous invoice numbers and unmatched references are separately classified.
+6. A candidate is not a verified payment and does not mark an invoice paid. Confirm payment through PayPal's server-side capture verification or a valid signed webhook.
+
+The CSV parser limits input to 80 KB and 250 transaction rows. This feature is a reconciliation assistant, not a bank statement importer, provider API sync, or automated accounting adjustment. Never claim that a CSV row alone proves funds settled.
+
 ## Video checklist
 
 - Keep the public YouTube video under 3 minutes.
