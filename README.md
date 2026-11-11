@@ -1,7 +1,7 @@
 # PayPilot AI — an auditable agent for invoice recovery
 
-**Judge preview (PostgreSQL-backed):** https://paypilot-ui-preview.onrender.com/  
-**Original production service:** https://paypilot-ai-1qw8.onrender.com/  
+**Live staging demo (PostgreSQL-backed):** https://paypilot-ai-pg-staging.onrender.com/  
+**Separate original production service (not updated by this staging work):** https://paypilot-ai-1qw8.onrender.com/  
 **Source:** https://github.com/251fa04c84-boop/paypilot-ai  
 **Hackathon:** PayPal AI Hackathon 2026
 
@@ -9,7 +9,7 @@ PayPilot AI is an evidence-first receivables recovery agent for small businesses
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
 > **Judge demo:** the public judge workflow remains a shared, no-login demo tenant unless private accounts are explicitly configured. Private account endpoints use scrypt password hashes, signed HttpOnly sessions and session-resolved tenant routing; they remain disabled unless `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID`, `ACCOUNT_PROVISIONING_DATABASE_URL` and a strong `SESSION_SECRET` are configured and `/api/health` reports `auth.enabled: true`. Do not assume private accounts are enabled on a deployed service until that health field is verified. Production browser-facing mutations for the shared demo remain disabled by default. Use demo data only until a real customer deployment has been security-reviewed.  
-> **Deployment distinction:** the judge preview is deployed from `codex/paypilot-human-crafted-ui` and reports PostgreSQL tenant-scoped storage. The original production service is a separate deployment; do not assume both services run the same commit or storage configuration. The public judge preview is still a shared, no-login demo tenant—not private per-user workspaces. This is a hackathon demo, not production accounting software.
+> **Deployment distinction:** the staging demo is deployed from `codex/paypilot-real-postgres-staging` and reports PostgreSQL tenant-scoped storage. The original production service is separate and was not modified. The public staging preview is a shared, read-only judge demo; private accounts use signed sessions and tenant-scoped PostgreSQL when enabled. This is a hackathon demo, not production accounting software.
 
 ### Public demo mutation switch
 
@@ -93,18 +93,18 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 
 | Check | Evidence/status |
 |---|---|
-| Sandbox checkout, buyer approval, server capture and invoice marked paid | Maintainer reports a successful end-to-end Sandbox payment on the deployed app; the UI showed the capture reference, server verification and paid invoice. |
-| Real PayPal webhook delivery | Maintainer reports completing an end-to-end Sandbox webhook check on 4 November 2026. The repository's automated webhook tests still use a mocked PayPal signature-verification response; those tests do not independently prove live webhook delivery. |
-| Webhook signature verification, missing configuration/headers, replay handling and retry behaviour | Automated tests with a mocked verifier. |
-| Payment validation and agent safety rules | Automated tests with mocked PayPal/Gemini services. |
-| Current CI | 109/109 tests passed on main commit `3bec43b` (8 Nov 2026); later documentation-only benchmark commit `366213a` also passed CI. |
-| Account API, scrypt password hashing, signed persisted sessions, logout revocation and session-derived tenant routing | Implemented on feature branch; automated tests are being run. Live deployment remains disabled pending DB-role and environment verification. |
+| Staging homepage and health endpoint | Browser inspection succeeded; homepage loaded without visible errors and `GET /api/health` returned HTTP 200 on 11 November 2026. |
+| PostgreSQL persistence and tenant isolation | GitHub Actions PostgreSQL integration workflow run `43035812286` completed successfully, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration. |
+| Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
+| PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. A previous end-to-end Sandbox checkout was reported by the maintainer; no new payment was initiated during this staging verification. |
+| PayPal webhook delivery | **Not currently verified for this staging app.** The latest read-only lookup using its Sandbox credentials returned 404 for the target event and zero listed events. Automated tests use a mocked verifier. |
+| Password-reset email | **Not live on staging.** Brevo/Resend adapters and reset-token flow are implemented, but health reports `email.configured: false` because no provider API key and verified sender are configured. |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
 
 ## Judge quick start
 
-1. Open the [hosted demo](https://paypilot-ai-1qw8.onrender.com/). The free host may need up to a minute to wake.
+1. Open the [staging demo](https://paypilot-ai-pg-staging.onrender.com/). The free host may need up to a minute to wake.
 2. Use **Load demo scenarios** in Mission Control if the demo data is not already loaded.
 3. Follow the suggested walkthrough in [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
 4. For checkout, use a PayPal Sandbox buyer account—not a personal/live PayPal account. Do not use real payment credentials.
@@ -185,13 +185,13 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 ## Known limitations
 
-- No authentication, user accounts or tenant isolation; restricted shared demo only. The planned tenant-isolation architecture and release gates are documented in [docs/TENANT_ISOLATION_PLAN.md](docs/TENANT_ISOLATION_PLAN.md).
-- JSON-file storage is not durable on ephemeral/free hosting and may reset after a restart.
-- Rate-limit counters are in memory.
-- No email/SMS delivery; reminder messages are drafts for the operator to send.
+- Public staging preview is read-only and uses synthetic shared demo data; private account flows are available when the configured database roles and session settings pass health checks.
+- Password-reset email is not enabled on staging until a transactional email provider key and verified sender are configured.
+- Rate-limit counters are in memory and are not distributed across instances.
+- Reminder messages are drafts for the operator to send; the app does not send reminder email/SMS.
 - PayPal Sandbox only; no real-money transactions.
 - One currency per invoice.
-- Automated tests mock PayPal and Gemini network calls.
+- Automated tests mock external PayPal and Gemini network calls; a passing test suite does not prove live provider delivery.
 
 ## License
 
