@@ -41,7 +41,7 @@ test('duplicate transaction IDs are flagged and non-completed statuses are exclu
   assert.equal(duplicate[1].result, 'duplicate');
   const pending = reconcile('invoice,amount,currency,status\nINV-001,120,USD,PENDING', invoices)[0];
   assert.equal(pending.result, 'not_completed');
-  const missing = reconcile('invoice,amount,currency\\nINV-001,120,USD', invoices)[0];
+  const missing = reconcile('invoice,amount,currency\nINV-001,120,USD', invoices)[0];
   assert.equal(missing.result, 'status_missing');
 });
 
