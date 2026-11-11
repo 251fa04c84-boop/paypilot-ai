@@ -662,6 +662,79 @@ async function viewRisk() {
   });
 }
 
+async function viewCommandCentre() {
+  const [overview, invoices, health] = await Promise.all([
+    api('GET', '/api/intelligence/overview'), api('GET', '/api/invoices'), api('GET', '/api/health')
+  ]);
+  const risk = overview.risk, anomalies = overview.anomalies;
+  main.replaceChildren(
+    h('h2', {}, 'PayPilot command centre'),
+    h('p', { class: 'muted' }, 'A judge-ready, evidence-first walkthrough: detect risk, inspect payment anomalies, simulate a recovery decision, then verify the audit and trust boundaries. All intelligence and simulations on this page are read-only.'),
+    h('section', { class: 'tiles' },
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Open invoices'), h('div', { class: 'big' }, String(risk.totalOpen))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Risk flags'), h('div', { class: 'big' }, String(risk.flagged))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Payment anomalies'), h('div', { class: 'big' }, String(anomalies.anomalyCount))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Pending approvals'), h('div', { class: 'big' }, String(health.demo.publicMutationsEnabled ? 'Enabled' : 'Restricted')))),
+    h('section', { class: 'card glow' }, h('strong', {}, '1 · Portfolio intelligence'),
+      h('p', { class: 'muted small' }, risk.disclaimer),
+      h('div', { class: 'row' }, h('span', {}, 'Critical ' + risk.counts.critical), h('span', {}, 'High ' + risk.counts.high), h('span', {}, 'Medium ' + risk.counts.medium), h('span', {}, 'Low ' + risk.counts.low)),
+      h('button', { class: 'btn', onclick: () => switchTab('risk') }, 'Open Risk Radar')),
+    h('section', { class: 'card' }, h('strong', {}, '2 · Payment anomaly monitor'),
+      h('p', { class: 'muted small' }, anomalies.disclaimer),
+      anomalies.anomalies.length ? anomalies.anomalies.slice(0, 8).map((x) => h('div', { class: 'sep' },
+        h('div', { class: 'row' }, h('strong', {}, x.code.replace(/_/g, ' ')), pill(x.severity === 'critical' ? 'bad' : 'warn', x.severity)),
+        h('p', { class: 'muted small' }, (x.invoiceNumber ? x.invoiceNumber + ': ' : '') + x.evidence))) : h('p', { class: 'muted' }, 'No payment-ledger anomalies detected in the current demo records.')),
+    h('section', { class: 'card' }, h('strong', {}, '3 · Recovery what-if simulator'),
+      h('p', { class: 'muted small' }, 'Select a synthetic or workspace invoice and preview the policy outcome. This does not create a draft, checkout, approval, proposal or audit event.'),
+    ));
+  const selector = h('select', { 'aria-label': 'Choose invoice' }, ...invoices.map((inv) => h('option', { value: inv.id }, inv.number + ' · ' + inv.client + ' · ' + inv.status)));
+  const action = h('select', { 'aria-label': 'Choose recovery action' },
+    h('option', { value: 'draft_reminder' }, 'Prepare reminder draft'),
+    h('option', { value: 'create_checkout' }, 'Create PayPal Sandbox checkout'));
+  const result = h('div', { class: 'muted small', role: 'status' }, 'Choose an invoice and action, then run the simulation.');
+  const run = h('button', { class: 'primary', onclick: async () => {
+    if (!selector.value) { result.textContent = 'No invoice is available to simulate.'; return; }
+    try {
+      const simulation = await api('GET', '/api/recovery/simulate?invoiceId=' + encodeURIComponent(selector.value) + '&action=' + encodeURIComponent(action.value));
+      result.replaceChildren(
+        h('div', { class: 'row' }, h('strong', {}, simulation.status === 'blocked' ? 'Blocked by policy' : 'Eligible for human review'), pill(simulation.status === 'blocked' ? 'bad' : 'ok', simulation.status)),
+        h('p', {}, simulation.reason),
+        h('ul', { class: 'list' }, simulation.steps.map((step) => h('li', {}, step))),
+        h('p', { class: 'muted small' }, 'Simulation only · changes: ' + simulation.changes.length));
+    } catch (e) { result.textContent = 'Simulation unavailable: ' + e.message; }
+  } }, 'Run safe simulation');
+  main.append(h('section', { class: 'card' }, h('div', { class: 'grid2' }, selector, action), h('div', { class: 'actions' }, run), result));
+  main.append(h('section', { class: 'card' }, h('strong', {}, '4 · Trust and verification'),
+    h('p', { class: 'muted small' }, 'Inspect explicit security controls, integration configuration and known gaps.'),
+    h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => switchTab('trust') }, 'Open Trust Centre')),
+    h('p', { class: 'muted small' }, 'PayPal environment: ' + health.paypal.environment + ' · Storage: ' + health.storage)));
+}
+
+async function viewTrustCentre() {
+  const trust = await api('GET', '/api/trust');
+  const c = trust.controls;
+  const rows = [
+    ['PayPal Sandbox only', trust.environment],
+    ['Tenant-scoped PostgreSQL', c.tenantScopedStorage],
+    ['Signed private sessions', c.signedSessions],
+    ['Human approval gate', c.humanApproval],
+    ['Server-side capture verification', c.serverSideCaptureVerification],
+    ['Signed webhook configured', c.webhookConfigured],
+    ['Audit log', c.auditLog],
+    ['Optional AI configured', c.aiConfigured],
+    ['Email provider configured', c.emailConfigured],
+    ['Public demo mutations', c.publicDemoMutations],
+  ];
+  main.replaceChildren(h('h2', {}, 'Trust centre'),
+    h('p', { class: 'muted' }, 'A transparent control inventory. This endpoint exposes configuration status only; it never returns credentials, tokens or secret values.'),
+    h('section', { class: 'card glow' }, h('strong', {}, 'Environment'), h('p', {}, trust.environment), h('p', { class: 'muted small' }, trust.storage)),
+    h('section', { class: 'card' }, h('strong', {}, 'Security and integration controls'),
+      ...rows.map(([label, value]) => h('div', { class: 'sep row' }, h('span', {}, label), pill(value === true ? 'ok' : value === false ? 'warn' : 'none', typeof value === 'boolean' ? (value ? 'Configured' : 'Not configured') : value)))),
+    h('section', { class: 'card' }, h('strong', {}, 'Enforced boundaries'), h('ul', { class: 'list' }, trust.boundaries.map((x) => h('li', {}, x)))),
+    h('section', { class: 'card warnbox' }, h('strong', {}, 'Known configuration gaps'),
+      trust.caveats.length ? h('ul', { class: 'list' }, trust.caveats.map((x) => h('li', {}, x))) : h('p', {}, 'No known configuration gaps reported by this environment.')));
+}
+
 async function viewActivity() {
   const list = await api('GET', '/api/actions');
   const bar = h('div', { class: 'actions', style: 'margin-bottom:12px' },
@@ -674,7 +747,7 @@ async function viewActivity() {
 async function render() {
   await safe(async () => {
     if (state.detail) return viewDetail();
-    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, reconcile: viewReconciliation, risk: viewRisk, assistant: viewAssistant, activity: viewActivity })[state.tab]();
+    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, reconcile: viewReconciliation, risk: viewRisk, command: viewCommandCentre, trust: viewTrustCentre, assistant: viewAssistant, activity: viewActivity })[state.tab]();
   });
   refreshBadge();
 }
