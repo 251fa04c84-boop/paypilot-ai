@@ -471,3 +471,19 @@ test('rate limiting ignores spoofed forwarded IP headers unless a trusted proxy 
     assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 200);
   } finally { t.close(); }
 });
+
+test('payment reconciliation preview is read-only and requires completed provider status', async () => {
+  const t = await boot();
+  try {
+    const created = await t.call('POST', '/api/invoices', NEW);
+    const before = JSON.stringify({ invoices: t.app.db.invoices, actions: t.app.db.actions, orders: t.app.db.orders });
+    const csv = 'Invoice Number,Amount,Currency,Transaction ID,Status\nINV-1,120.50,USD,CAP-1,COMPLETED\nINV-1,120.50,USD,CAP-2,PENDING\nINV-1,120.50,USD,CAP-3,';
+    const preview = await t.call('POST', '/api/reconciliation/preview', { csv });
+    assert.equal(preview.status, 200);
+    assert.deepEqual(preview.json.results.map((x) => x.result), ['candidate', 'not_completed', 'status_missing']);
+    assert.equal(preview.json.results[0].invoiceId, created.json.id);
+    assert.match(preview.json.results[0].reason, /review candidate only/);
+    assert.equal(JSON.stringify({ invoices: t.app.db.invoices, actions: t.app.db.actions, orders: t.app.db.orders }), before);
+    assert.equal((await t.call('POST', '/api/reconciliation/preview', { csv: 'invoice,amount\\nINV-1,10' })).status, 400);
+  } finally { t.close(); }
+});

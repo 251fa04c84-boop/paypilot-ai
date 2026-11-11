@@ -4,7 +4,7 @@ on:
   push:
     branches: ["codex/paypilot-real-postgres-staging"]
   pull_request:
-    branches: ["main", "codex/postgres-request-scoped-repository"]
+    branches: ["main", "codex/postgres-request-scoped-repository", "codex/paypilot-real-postgres-staging"]
 
 jobs:
   postgres-integration:

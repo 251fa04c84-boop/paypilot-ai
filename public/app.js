@@ -193,6 +193,7 @@ function invoiceCard(inv, a, onOpen) {
     h('div', { class: 'actions invoice-actions' }, h('button', { class: 'primary', onclick: onOpen }, 'Open invoice')));
 }
 const tile = (label, value, cur, sub) => h('div', { class: 'tile' }, h('div', { class: 'muted small' }, label), h('div', { class: 'big' }, `${Number(value).toFixed(2)} ${cur}`), h('div', { class: 'muted small' }, sub));
+const countTile = (label, value, sub) => h('div', { class: 'tile' }, h('div', { class: 'muted small' }, label), h('div', { class: 'big' }, String(Number(value) || 0)), h('div', { class: 'muted small' }, sub));
 function totals(sum) {
   return sum.map((c) => h('div', { class: 'card glow' }, h('div', { class: 'row' }, h('span', { class: 'name' }, `Recovery metrics (${c.currency})`), h('span', { class: 'badge none' }, 'plain arithmetic, no AI')),
     h('div', { class: 'tiles' },
@@ -200,7 +201,8 @@ function totals(sum) {
       tile('Overdue', c.overdue, c.currency, `${c.overdueCount} invoice${c.overdueCount === 1 ? '' : 's'}`),
       tile('At risk (30+ days late)', c.atRisk, c.currency, `${c.atRiskCount} invoice${c.atRiskCount === 1 ? '' : 's'}`),
       tile('Disputed (paused)', c.disputed, c.currency, `${c.disputedCount} invoice${c.disputedCount === 1 ? '' : 's'}`),
-      tile('Paid via PayPal Sandbox', c.paidViaPayPal, c.currency, 'verified captures'))));
+      tile('Paid via PayPal Sandbox', c.paidViaPayPal, c.currency, `${c.paidViaPayPalCount || 0} verified capture${c.paidViaPayPalCount === 1 ? '' : 's'}`),
+      countTile('Operator-confirmed reminders', c.remindersConfirmed, 'User-confirmed; delivery not verified'))));
 }
 function auditClass(t) {
   if (['action_blocked', 'verification_failed', 'payment_failed', 'duplicate_payment'].includes(t)) return 't-blocked';
@@ -590,6 +592,50 @@ async function viewAssistant() {
   main.append(quickPills, thread, form);
 }
 
+async function viewReconciliation() {
+  main.replaceChildren(
+    h('h2', {}, 'Payment reconciliation'),
+    h('p', { class: 'muted' }, 'Paste a PayPal transaction CSV export to compare invoice references, amounts and currencies against this workspace. This is a read-only preview. It never marks invoices paid or changes payment records.'),
+  );
+  const csv = h('textarea', { rows: '9', maxlength: '100000', 'aria-label': 'Payment CSV', placeholder: 'Invoice Number,Amount,Currency,Transaction ID,Status\nINV-1001,125.00,USD,CAPTURE-123,COMPLETED' });
+  const fileInput = h('input', { type: 'file', accept: '.csv,text/csv', 'aria-label': 'Choose a CSV file', onchange: async (event) => { const file = event.target.files && event.target.files[0]; if (!file) return; if (file.size > 80000) { error.textContent = 'CSV is too large. Maximum size is 80 KB.'; return; } try { csv.value = await file.text(); error.textContent = ''; } catch (_) { error.textContent = 'Could not read this file. Paste CSV text instead.'; } } });
+  const error = h('p', { class: 'err', role: 'alert' });
+  const output = h('div', {});
+  const example = 'Invoice Number,Amount,Currency,Transaction ID,Status\nINV-1001,125.00,USD,CAPTURE-123,COMPLETED';
+  const run = h('button', { class: 'primary', type: 'button', onclick: lock('Checking…', async () => {
+    error.textContent = ''; output.replaceChildren();
+    try {
+      const result = await api('POST', '/api/reconciliation/preview', { csv: csv.value });
+      const rows = result.results || [];
+      const counts = rows.reduce((acc, item) => { acc[item.result] = (acc[item.result] || 0) + 1; return acc; }, {});
+      const labels = { candidate: 'Review candidates', mismatch: 'Amount / currency mismatches', disputed: 'Disputed — paused', already_paid: 'Already marked paid', unmatched: 'Unmatched invoices', ambiguous: 'Ambiguous references', duplicate: 'Duplicate transaction IDs', not_completed: 'Not completed', status_missing: 'Status missing', invalid: 'Invalid rows' };
+      output.append(h('div', { class: 'card glow' },
+        h('div', { class: 'row' }, h('strong', {}, 'Preview results'), h('span', { class: 'badge none' }, 'No records changed')),
+        h('p', { class: 'muted small' }, `${rows.length} transaction rows reviewed`),
+        h('div', { class: 'tiles' }, Object.entries(labels).filter(([key]) => counts[key]).map(([key, label]) => h('div', { class: 'tile' }, h('div', { class: 'muted small' }, label), h('div', { class: 'big' }, String(counts[key])))))));
+      rows.forEach((item) => {
+        const label = labels[item.result] || item.result;
+        output.append(h('div', { class: 'card' },
+          h('div', { class: 'row' }, h('strong', {}, item.invoiceNumber || 'Missing invoice reference'), h('span', { class: 'badge ' + (item.result === 'candidate' ? 'ok' : item.result === 'mismatch' || item.result === 'disputed' ? 'warn' : 'none') }, label)),
+          h('p', { class: 'muted small' }, `Row ${item.row} · ${item.amount == null ? 'Invalid amount' : money(item.amount, item.currency)}${item.transactionId ? ' · ' + item.transactionId : ''}`),
+          h('p', {}, item.reason),
+          item.client && h('p', { class: 'muted small' }, 'Workspace client: ' + item.client)));
+      });
+      if (!rows.length) output.append(h('div', { class: 'card empty' }, 'No transaction rows found.'));
+    } catch (e) { error.textContent = e.message; }
+  }) }, 'Preview reconciliation');
+  const sample = h('button', { class: 'btn', type: 'button', onclick: () => { csv.value = example; error.textContent = ''; } }, 'Load sample CSV');
+  main.append(h('section', { class: 'card' },
+    h('div', { class: 'row' }, h('strong', {}, 'Import transaction evidence'), h('span', { class: 'badge none' }, 'CSV · max 250 rows')),
+    h('p', { class: 'muted small' }, 'Required columns: Invoice Number, Amount, Currency. Optional: Transaction ID and Status. Rows without a completed provider status remain unverified and cannot become review candidates.'),
+    h('label', {}, 'Choose CSV file (optional)'), fileInput,
+    h('label', {}, 'Or paste CSV content'),
+    csv,
+    h('div', { class: 'actions' }, sample, run),
+    error));
+  main.append(output);
+}
+
 async function viewActivity() {
   const list = await api('GET', '/api/actions');
   const bar = h('div', { class: 'actions', style: 'margin-bottom:12px' },
@@ -602,7 +648,7 @@ async function viewActivity() {
 async function render() {
   await safe(async () => {
     if (state.detail) return viewDetail();
-    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, assistant: viewAssistant, activity: viewActivity })[state.tab]();
+    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, reconcile: viewReconciliation, assistant: viewAssistant, activity: viewActivity })[state.tab]();
   });
   refreshBadge();
 }

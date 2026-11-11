@@ -4,7 +4,7 @@ on:
   push:
     branches: ["main", "codex/**", "competition/**"]
   pull_request:
-    branches: ["main", "codex/paypilot-human-crafted-ui"]
+    branches: ["main", "codex/paypilot-human-crafted-ui", "codex/paypilot-real-postgres-staging"]
 
 permissions:
   contents: read
