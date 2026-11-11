@@ -56,6 +56,24 @@ test('PayPal can read an existing webhook event through the Sandbox API without 
   await assert.rejects(paypal.getWebhookEvent('../bad'), /Invalid PayPal webhook event ID/);
 });
 
+test('PayPal can list recent Sandbox webhook events with date filters', async () => {
+  const calls = [];
+  const paypal = createPayPal({
+    clientId: 'sandbox-client', secret: 'sandbox-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v1/oauth2/token')) return response(200, { access_token: 'sandbox-access-token', expires_in: 3600 });
+      return response(200, { count: 1, events: [{ id: 'WH-123', event_type: 'CHECKOUT.ORDER.APPROVED' }] });
+    },
+  });
+  const result = await paypal.listWebhookEvents({ startTime: '2026-11-01T00:00:00Z', endTime: '2026-11-12T23:59:59Z', pageSize: 100 });
+  assert.equal(result.count, 1);
+  assert.match(calls[1].url, /\/v1\/notifications\/webhooks-events\?/);
+  assert.match(calls[1].url, /start_time=2026-11-01T00%3A00%3A00Z/);
+  assert.match(calls[1].url, /page_size=100/);
+  assert.equal(calls[1].options.method, 'GET');
+});
+
 test('PayPal webhook verifier returns false when required verification inputs are missing', async () => {
   let called = false;
   const paypal = createPayPal({
