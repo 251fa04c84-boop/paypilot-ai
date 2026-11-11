@@ -29,8 +29,20 @@ Most invoice tools stop at reminders, and most chat interfaces stop at suggestio
 - **Safety is part of the workflow:** disputed and paid invoices are blocked; recent reminders can trigger a wait recommendation; untrusted invoice notes cannot instruct the agent.
 - **Recovery outcomes are visible:** the currency-grouped outcome ledger separates PayPal Sandbox captures verified by the server from manual/demo paid records, and counts operator-confirmed reminders without pretending they are delivery receipts.
 - **Payment reconciliation is review-first:** a bounded CSV preview classifies exact invoice/amount/currency matches, missing or pending provider status, duplicates, disputes and mismatches. It never marks an invoice paid; server-verified PayPal capture remains authoritative.
+- **Risk Radar:** deterministic, evidence-linked review signals surface disputes, overdue exposure, duplicate invoice references, repeated contact pressure, amount outliers and multiple active orders. Scores prioritize human review; they are not fraud probabilities.
+- **Payment anomaly monitor:** checks the local order ledger for duplicate provider references, amount/currency mismatches, orphaned orders, stale open orders and multiple active orders. These checks do not assert fraud or replace PayPal's provider state.
+- **Recovery what-if simulator:** previews whether a reminder or Sandbox checkout proposal would pass policy, identifies blockers and shows the approval/verification steps. It never creates a draft, proposal, approval, checkout or audit record.
+- **Command Centre and Trust Centre:** one judge walkthrough surfaces portfolio risk, payment anomalies, safe simulation and the live environment's security/integration configuration without exposing secrets.
 
 The product's core differentiator is the full chain from portfolio triage to evidence-backed approval to verified payment—not a claim that an LLM autonomously controls money.
+
+## Competitive intelligence and safe simulation
+
+The **Command Centre** combines read-only portfolio risk, order-ledger anomaly checks and a recovery what-if simulation. The **Trust Centre** reports whether controls are configured and lists known gaps; it does not expose secret values.
+
+The simulation supports `draft_reminder` and `create_checkout` policy previews. It checks invoice status, disputes, duplicate invoice references, contact pressure and active payment orders. A green result means only **eligible for human review**. It is not approval, execution, a PayPal API call or a promise of recovery.
+
+The anomaly monitor checks stored order references and invoice associations. It is a consistency monitor, not a fraud model. A flagged item should be investigated against the provider dashboard and source documents.
 
 ## Judge evaluation map
 
