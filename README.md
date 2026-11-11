@@ -146,6 +146,7 @@ See [.env.example](.env.example). Configure values only in your local environmen
 | `PAYPAL_WEBHOOK_ID` | Sandbox webhook ID used for signature verification |
 | `GEMINI_API_KEY` | Google Gemini API access |
 | `GEMINI_MODEL` | Optional model selection |
+| `BREVO_API_KEY` or `RESEND_API_KEY`, `EMAIL_FROM` | Optional password-reset email provider; sender address must be verified with the provider |
 | `APP_BASE_URL`, `SENDER_NAME` | Optional application/reminder metadata |
 | `PG_STORAGE_MODE=judge_demo`, `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID` | PostgreSQL-backed judge demo; pre-provision the demo tenant |
 | `ACCOUNT_PROVISIONING_DATABASE_URL` | Separate least-privilege connection for account + tenant creation and account lookup |
@@ -169,7 +170,7 @@ lib/priority.js  Dates, scoring and recovery queue
 lib/payments.js  Capture verification and paid-state transition
 lib/paypal.js    PayPal Orders v2 and webhook verification client (Sandbox)
 lib/ai.js        Gemini calls, fallback, timeout, backoff and output validation
-lib/store.js     JSON persistence and audit log
+lib/store.js     legacy local JSON store; lib/postgres-store.js request-scoped transactional tenant state; lib/postgres-repository.js account/session/reset/order persistence
 lib/summary.js   Multi-currency accounting summaries
 lib/ratelimit.js Sliding-window rate limiters
 ```
