@@ -323,7 +323,16 @@ function createApp(opts = {}) {
   route('GET', '/api/health', async () => {
     let accountsReady = false;
     if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
-    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? emailProvider.provider : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
+    let paypalEventLookup = null;
+    if (env.PAYPAL_DIAGNOSTICS_ENABLED === 'true' && typeof env.PAYPAL_DIAGNOSTIC_EVENT_ID === 'string' && env.PAYPAL_DIAGNOSTIC_EVENT_ID && typeof paypal.getWebhookEvent === 'function') {
+      try {
+        const event = await paypal.getWebhookEvent(env.PAYPAL_DIAGNOSTIC_EVENT_ID);
+        paypalEventLookup = { found: true, id: event.id || null, eventType: event.event_type || null, createdAt: event.create_time || null, deliveryStatus: event.delivery_status || null, summary: typeof event.summary === 'string' ? event.summary.slice(0, 250) : null };
+      } catch (error) {
+        paypalEventLookup = { found: false, httpStatus: Number.isInteger(error.status) ? error.status : null, error: error.message };
+      }
+    }
+    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, paypalEventLookup, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? emailProvider.provider : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
   });
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
