@@ -477,7 +477,7 @@ test('payment reconciliation preview is read-only and requires completed provide
   try {
     const created = await t.call('POST', '/api/invoices', NEW);
     const before = JSON.stringify({ invoices: t.app.db.invoices, actions: t.app.db.actions, orders: t.app.db.orders });
-    const csv = 'Invoice Number,Amount,Currency,Transaction ID,Status\\nINV-1,120.50,USD,CAP-1,COMPLETED\\nINV-1,120.50,USD,CAP-2,PENDING\\nINV-1,120.50,USD,CAP-3,';
+    const csv = 'Invoice Number,Amount,Currency,Transaction ID,Status\nINV-1,120.50,USD,CAP-1,COMPLETED\nINV-1,120.50,USD,CAP-2,PENDING\nINV-1,120.50,USD,CAP-3,';
     const preview = await t.call('POST', '/api/reconciliation/preview', { csv });
     assert.equal(preview.status, 200);
     assert.deepEqual(preview.json.results.map((x) => x.result), ['candidate', 'not_completed', 'status_missing']);
