@@ -14,6 +14,7 @@ const { createPayPal } = require('./lib/paypal');
 const { generateDraft, generateText } = require('./lib/ai');
 const { ACTIONS, APPROVAL_TTL_MS, evaluate, plan, snapshotHash, buildInterpretationPrompt, validateInterpretation, portfolioTriage, processAssistantQuery } = require('./lib/agent');
 const { summarize } = require('./lib/summary');
+const { reconcile } = require('./lib/reconciliation');
 const { createLimiter } = require('./lib/ratelimit');
 const { createPostgresRepository, createPgPool } = require('./lib/postgres-repository');
 const { createPostgresStore } = require('./lib/postgres-store');
@@ -380,6 +381,11 @@ function createApp(opts = {}) {
     return { json: q.map((a) => ({ assessment: a, invoice: db.invoices.find((i) => i.id === a.invoiceId) })) };
   });
   route('GET', '/api/summary', () => ({ json: summarize(db.invoices, todayStr()) }));
+  route('POST', '/api/reconciliation/preview', ({ body }) => {
+    if (typeof body.csv !== 'string') throw new HttpError(400, 'Provide CSV text in the csv field.');
+    try { return { json: { mode: 'preview_only', results: reconcile(body.csv, db.invoices) } }; }
+    catch (error) { throw new HttpError(400, error.message); }
+  });
   route('GET', '/api/actions', () => ({ json: db.actions.slice(-100).reverse() }));
   route('GET', '/api/actions/export', ({ query }) => {
     const format = (query.format || 'csv').toLowerCase();
