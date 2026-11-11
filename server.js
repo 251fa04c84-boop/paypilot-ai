@@ -53,7 +53,10 @@ function createApp(opts = {}) {
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
-  const emailOptions = { from: env.EMAIL_FROM, appBaseUrl: baseUrl, fetchImpl: opts.emailFetch || fetch };\n  const emailProvider = opts.emailProvider || (env.BREVO_API_KEY\n    ? createBrevoEmailProvider({ ...emailOptions, apiKey: env.BREVO_API_KEY })\n    : createResendEmailProvider({ ...emailOptions, apiKey: env.RESEND_API_KEY }));
+  const emailOptions = { from: env.EMAIL_FROM, appBaseUrl: baseUrl, fetchImpl: opts.emailFetch || fetch };
+  const emailProvider = opts.emailProvider || (env.BREVO_API_KEY
+    ? createBrevoEmailProvider({ ...emailOptions, apiKey: env.BREVO_API_KEY })
+    : createResendEmailProvider({ ...emailOptions, apiKey: env.RESEND_API_KEY }));
   // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
   // Demo-admin controls are development-only. An environment flag must never enable simulated payment settlement in production.
   const demoAdminEnabled = !isProduction && env.ENABLE_DEMO_ADMIN !== 'false';
