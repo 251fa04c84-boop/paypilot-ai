@@ -24,29 +24,31 @@ test('exact completed payment becomes a review candidate only', () => {
 });
 
 test('amount or currency mismatch never auto-adjusts invoice', () => {
-  const [r] = reconcile('invoice,amount,currency\nINV-001,121,USD', invoices);
+  const [r] = reconcile('invoice,amount,currency,status\nINV-001,121,USD,COMPLETED', invoices);
   assert.equal(r.result, 'mismatch');
 });
 
 test('disputed and already-paid invoices are not treated as candidates', () => {
-  const disputed = reconcile('invoice,amount,currency\nINV-002,80,USD', invoices)[0];
-  const paid = reconcile('invoice,amount,currency\nINV-003,50,EUR', invoices)[0];
+  const disputed = reconcile('invoice,amount,currency,status\nINV-002,80,USD,COMPLETED', invoices)[0];
+  const paid = reconcile('invoice,amount,currency,status\nINV-003,50,EUR,COMPLETED', invoices)[0];
   assert.equal(disputed.result, 'disputed');
   assert.equal(paid.result, 'already_paid');
 });
 
 test('duplicate transaction IDs are flagged and non-completed statuses are excluded', () => {
-  const duplicate = reconcile('invoice,amount,currency,transaction_id\nINV-001,120,USD,CAP-X\nINV-001,120,USD,CAP-X', invoices);
+  const duplicate = reconcile('invoice,amount,currency,transaction_id,status\nINV-001,120,USD,CAP-X,COMPLETED\nINV-001,120,USD,CAP-X,COMPLETED', invoices);
   assert.equal(duplicate[0].result, 'candidate');
   assert.equal(duplicate[1].result, 'duplicate');
   const pending = reconcile('invoice,amount,currency,status\nINV-001,120,USD,PENDING', invoices)[0];
   assert.equal(pending.result, 'not_completed');
+  const missing = reconcile('invoice,amount,currency\\nINV-001,120,USD', invoices)[0];
+  assert.equal(missing.result, 'status_missing');
 });
 
 test('missing invoice, malformed amount, and duplicate invoice numbers are safely classified', () => {
-  const notFound = reconcile('invoice,amount,currency\nINV-X,1,USD', invoices)[0];
+  const notFound = reconcile('invoice,amount,currency,status\nINV-X,1,USD,COMPLETED', invoices)[0];
   const invalid = reconcile('invoice,amount,currency\nINV-001,nope,USD', invoices)[0];
-  const ambiguous = reconcile('invoice,amount,currency\nINV-001,120,USD', [...invoices, { ...invoices[0], id: 'd' }])[0];
+  const ambiguous = reconcile('invoice,amount,currency,status\nINV-001,120,USD,COMPLETED', [...invoices, { ...invoices[0], id: 'd' }])[0];
   assert.equal(notFound.result, 'unmatched');
   assert.equal(invalid.result, 'invalid');
   assert.equal(ambiguous.result, 'ambiguous');
