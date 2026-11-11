@@ -18,6 +18,7 @@ Last verified: 11 November 2026
 - Health reports PostgreSQL tenant-scoped storage, Gemini configured, PayPal Sandbox configured, and private-account auth enabled.
 - Public judge-demo workflow mutations are enabled on staging only; demo-admin controls remain disabled. The interactive workflow can change shared synthetic demo records, and the public reset control is disabled.
 - The Gemini assistant passed a live read-only browser test: it summarized overdue and disputed demo invoices with evidence and did not create proposals, approvals, payment links, or execute actions.
+- One live portfolio-sweep test succeeded and staged a single pending reminder-draft proposal for Greenleaf Co (demo); no proposal was approved or executed and no payment was created.
 - GitHub Actions PostgreSQL integration workflow run 43035812286 completed successfully. It passed application unit tests, schema/runtime-role setup, RLS policy checks, restricted lookup functions, migrations, private account/session checks, tenant isolation, concurrent writes, cross-connection persistence, HTTP route integration, and cleanup.
 - No production service or production database was modified.
 
