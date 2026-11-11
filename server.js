@@ -325,6 +325,29 @@ function createApp(opts = {}) {
     if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
     return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? emailProvider.provider : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
   });
+  // Temporary read-only PayPal event inspection for staging diagnostics. Disabled unless explicitly enabled with a separate bearer token.
+  route('GET', '/api/internal/paypal/webhook-events/:id', async ({ headers, params }) => {
+    const expected = typeof env.PAYPAL_DIAGNOSTIC_TOKEN === 'string' ? env.PAYPAL_DIAGNOSTIC_TOKEN : '';
+    const authorization = String(headers.authorization || '');
+    const supplied = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+    const expectedBuffer = Buffer.from(expected);
+    const suppliedBuffer = Buffer.from(supplied);
+    if (env.PAYPAL_DIAGNOSTICS_ENABLED !== 'true' || !expected || expectedBuffer.length < 32 ||
+        suppliedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(suppliedBuffer, expectedBuffer)) {
+      throw new HttpError(404, 'Not found.');
+    }
+    if (typeof paypal.getWebhookEvent !== 'function') throw new HttpError(503, 'PayPal event lookup is unavailable.');
+    const event = await paypal.getWebhookEvent(params.id);
+    return { json: {
+      id: event.id || params.id,
+      event_type: event.event_type || null,
+      create_time: event.create_time || null,
+      resource_type: event.resource_type || null,
+      summary: typeof event.summary === 'string' ? event.summary.slice(0, 500) : null,
+      delivery_status: event.delivery_status || null,
+      links: Array.isArray(event.links) ? event.links.filter((link) => link && ['self', 'resend'].includes(link.rel)).map((link) => ({ rel: link.rel, href: link.href })) : []
+    } };
+  });
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     requireMutableDemo();
