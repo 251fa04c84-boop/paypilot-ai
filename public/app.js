@@ -636,6 +636,32 @@ async function viewReconciliation() {
   main.append(output);
 }
 
+async function viewRisk() {
+  const report = await api('GET', '/api/risk/portfolio');
+  main.replaceChildren(
+    h('h2', {}, 'Risk intelligence'),
+    h('p', { class: 'muted' }, 'Deterministic review signals surface unusual patterns across open invoices. Scores prioritize human review; they are not fraud probabilities, credit scores or payment predictions.'),
+    h('section', { class: 'tiles' },
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Open invoices'), h('div', { class: 'big' }, String(report.totalOpen))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Flagged for review'), h('div', { class: 'big' }, String(report.flagged))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Critical / high'), h('div', { class: 'big' }, String(report.counts.critical + report.counts.high))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Medium / low'), h('div', { class: 'big' }, String(report.counts.medium + report.counts.low)))),
+    h('section', { class: 'card glow' }, h('strong', {}, 'Evidence-first risk radar'), h('p', { class: 'muted small' }, report.disclaimer),
+      h('p', { class: 'muted small' }, 'Signals: disputes, severe overdue balances, duplicate invoice references, repeated recent reminders, same-client amount outliers and multiple active payment orders. No invoice or payment record is changed.'))
+  );
+  if (!report.items.length) { main.append(h('div', { class: 'card empty' }, 'No open invoices to review.')); return; }
+  report.items.forEach((item) => {
+    const cls = item.level === 'critical' || item.level === 'high' ? 'bad' : item.level === 'medium' ? 'warn' : 'ok';
+    const card = h('section', { class: 'card' },
+      h('div', { class: 'row' }, h('div', {}, h('strong', {}, item.client), h('p', { class: 'muted small' }, item.invoiceNumber + ' · ' + money(item.amount, item.currency))), h('span', { class: 'badge ' + cls }, item.level + ' · ' + item.score + '/100')),
+      h('p', { class: 'muted small' }, item.disposition));
+    if (!item.signals.length) card.append(h('p', { class: 'muted small' }, 'No configured risk signals detected.'));
+    item.signals.forEach((signal) => card.append(h('div', { class: 'sep' }), h('div', { class: 'row' }, h('strong', {}, signal.title), h('span', { class: 'badge ' + (signal.severity === 'high' ? 'bad' : 'warn') }, '+' + signal.points)), h('p', { class: 'muted small' }, signal.evidence)));
+    card.append(h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => openDetail(item.invoiceId) }, 'Inspect invoice')));
+    main.append(card);
+  });
+}
+
 async function viewActivity() {
   const list = await api('GET', '/api/actions');
   const bar = h('div', { class: 'actions', style: 'margin-bottom:12px' },
@@ -648,7 +674,7 @@ async function viewActivity() {
 async function render() {
   await safe(async () => {
     if (state.detail) return viewDetail();
-    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, reconcile: viewReconciliation, assistant: viewAssistant, activity: viewActivity })[state.tab]();
+    return ({ mission: viewMission, approvals: viewApprovals, invoices: viewInvoices, reconcile: viewReconciliation, risk: viewRisk, assistant: viewAssistant, activity: viewActivity })[state.tab]();
   });
   refreshBadge();
 }
