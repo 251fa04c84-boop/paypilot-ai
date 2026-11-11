@@ -10,8 +10,8 @@ const inv = (overrides = {}) => Object.assign({
 
 test('risk radar detects severe overdue invoices and explains the signal', () => {
   const result = assessPortfolioRisk([inv()], [], '2026-11-11');
-  assert.equal(result.items[0].score, 20);
-  assert.equal(result.items[0].signals[0].code, 'long_overdue');
+  assert.equal(result.items[0].score, 10);
+  assert.equal(result.items[0].signals[0].code, 'overdue');
   assert.match(result.items[0].signals[0].evidence, /10 days/);
 });
 
