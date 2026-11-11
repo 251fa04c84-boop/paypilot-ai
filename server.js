@@ -324,12 +324,20 @@ function createApp(opts = {}) {
     let accountsReady = false;
     if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
     let paypalEventLookup = null;
-    if (env.PAYPAL_DIAGNOSTICS_ENABLED === 'true' && typeof env.PAYPAL_DIAGNOSTIC_EVENT_ID === 'string' && env.PAYPAL_DIAGNOSTIC_EVENT_ID && typeof paypal.getWebhookEvent === 'function') {
+    if (env.PAYPAL_DIAGNOSTICS_ENABLED === 'true' && typeof env.PAYPAL_DIAGNOSTIC_EVENT_ID === 'string' && env.PAYPAL_DIAGNOSTIC_EVENT_ID && typeof paypal.listWebhookEvents === 'function') {
       try {
-        const event = await paypal.getWebhookEvent(env.PAYPAL_DIAGNOSTIC_EVENT_ID);
-        paypalEventLookup = { found: true, id: event.id || null, eventType: event.event_type || null, createdAt: event.create_time || null, deliveryStatus: event.delivery_status || null, summary: typeof event.summary === 'string' ? event.summary.slice(0, 250) : null };
+        const data = await paypal.listWebhookEvents({ startTime: '2026-11-01T00:00:00Z', endTime: '2026-11-12T23:59:59Z', pageSize: 100 });
+        const events = Array.isArray(data.events) ? data.events : [];
+        const target = events.find((event) => event && event.id === env.PAYPAL_DIAGNOSTIC_EVENT_ID);
+        paypalEventLookup = {
+          listSucceeded: true,
+          count: Number.isInteger(data.count) ? data.count : events.length,
+          targetFound: Boolean(target),
+          target: target ? { id: target.id, eventType: target.event_type || null, createdAt: target.create_time || null, summary: typeof target.summary === 'string' ? target.summary.slice(0, 250) : null } : null,
+          recentEvents: events.slice(0, 8).map((event) => ({ id: event.id || null, eventType: event.event_type || null, createdAt: event.create_time || null }))
+        };
       } catch (error) {
-        paypalEventLookup = { found: false, httpStatus: Number.isInteger(error.status) ? error.status : null, error: error.message };
+        paypalEventLookup = { listSucceeded: false, httpStatus: Number.isInteger(error.status) ? error.status : null, error: error.message };
       }
     }
     return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, paypalEventLookup, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? emailProvider.provider : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
