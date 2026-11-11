@@ -9,7 +9,7 @@ PayPilot AI is an evidence-first receivables recovery agent for small businesses
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
 > **Judge demo:** the public judge workflow remains a shared, no-login demo tenant unless private accounts are explicitly configured. Private account endpoints use scrypt password hashes, signed HttpOnly sessions and session-resolved tenant routing; they remain disabled unless `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID`, `ACCOUNT_PROVISIONING_DATABASE_URL` and a strong `SESSION_SECRET` are configured and `/api/health` reports `auth.enabled: true`. Do not assume private accounts are enabled on a deployed service until that health field is verified. Production browser-facing mutations for the shared demo remain disabled by default. Use demo data only until a real customer deployment has been security-reviewed.  
-> **Deployment distinction:** the staging demo is deployed from `codex/paypilot-real-postgres-staging` and reports PostgreSQL tenant-scoped storage. The original production service is separate and was not modified. The public staging preview is a shared, read-only judge demo; private accounts use signed sessions and tenant-scoped PostgreSQL when enabled. This is a hackathon demo, not production accounting software.
+> **Deployment distinction:** the staging demo is deployed from `codex/paypilot-real-postgres-staging` and reports PostgreSQL tenant-scoped storage. The original production service is separate and was not modified. The public staging preview has controlled judge-demo workflow actions enabled and uses shared synthetic records; those actions can change the shared demo data, and public reset is disabled. Private accounts use signed sessions and tenant-scoped PostgreSQL when enabled. This is a hackathon demo, not production accounting software.
 
 ### Public demo mutation switch
 
@@ -186,7 +186,7 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 ## Known limitations
 
-- Public staging preview is read-only and uses synthetic shared demo data; private account flows are available when the configured database roles and session settings pass health checks.
+- Public staging judge-demo actions are enabled and operate only on shared synthetic records; the public reset control is disabled. Private account flows are available when the configured database roles and session settings pass health checks.
 - Password-reset email is not enabled on staging until a transactional email provider key and verified sender are configured.
 - Rate-limit counters are in memory and are not distributed across instances.
 - Reminder messages are drafts for the operator to send; the app does not send reminder email/SMS.
