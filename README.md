@@ -27,6 +27,7 @@ Most invoice tools stop at reminders, and most chat interfaces stop at suggestio
 - **Human authority at the point of action:** the operator reviews the exact proposed action; the server revalidates the invoice and approval before execution.
 - **Money movement is not inferred:** a checkout is only an order. An invoice is marked paid only after server-side PayPal Sandbox capture verification or a verified signed webhook.
 - **Safety is part of the workflow:** disputed and paid invoices are blocked; recent reminders can trigger a wait recommendation; untrusted invoice notes cannot instruct the agent.
+- **Recovery outcomes are visible:** the currency-grouped outcome ledger separates PayPal Sandbox captures verified by the server from manual/demo paid records, and counts operator-confirmed reminders without pretending they are delivery receipts.
 
 The product's core differentiator is the full chain from portfolio triage to evidence-backed approval to verified payment—not a claim that an LLM autonomously controls money.
 
