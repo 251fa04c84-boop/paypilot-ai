@@ -598,6 +598,7 @@ async function viewReconciliation() {
     h('p', { class: 'muted' }, 'Paste a PayPal transaction CSV export to compare invoice references, amounts and currencies against this workspace. This is a read-only preview. It never marks invoices paid or changes payment records.'),
   );
   const csv = h('textarea', { rows: '9', maxlength: '100000', 'aria-label': 'Payment CSV', placeholder: 'Invoice Number,Amount,Currency,Transaction ID,Status\nINV-1001,125.00,USD,CAPTURE-123,COMPLETED' });
+  const fileInput = h('input', { type: 'file', accept: '.csv,text/csv', 'aria-label': 'Choose a CSV file', onchange: async (event) => { const file = event.target.files && event.target.files[0]; if (!file) return; if (file.size > 80000) { error.textContent = 'CSV is too large. Maximum size is 80 KB.'; return; } try { csv.value = await file.text(); error.textContent = ''; } catch (_) { error.textContent = 'Could not read this file. Paste CSV text instead.'; } } });
   const error = h('p', { class: 'err', role: 'alert' });
   const output = h('div', {});
   const example = 'Invoice Number,Amount,Currency,Transaction ID,Status\nINV-1001,125.00,USD,CAPTURE-123,COMPLETED';
@@ -627,6 +628,8 @@ async function viewReconciliation() {
   main.append(h('section', { class: 'card' },
     h('div', { class: 'row' }, h('strong', {}, 'Import transaction evidence'), h('span', { class: 'badge none' }, 'CSV · max 250 rows')),
     h('p', { class: 'muted small' }, 'Required columns: Invoice Number, Amount, Currency. Optional: Transaction ID and Status. Rows without a completed provider status remain unverified and cannot become review candidates.'),
+    h('label', {}, 'Choose CSV file (optional)'), fileInput,
+    h('label', {}, 'Or paste CSV content'),
     csv,
     h('div', { class: 'actions' }, sample, run),
     error));
