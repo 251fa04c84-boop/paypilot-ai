@@ -7,7 +7,7 @@ Last verified: 11 November 2026
 - URL: https://paypilot-ai-pg-staging.onrender.com/
 - Environment: Render free-tier staging service, Singapore region
 - Branch: `codex/paypilot-real-postgres-staging`
-- Deployed commit: `b63cdc5e5f4ea6572a6d50927d838e873ace7267`
+- Deployed commit: `bcc66518afa69979fa308fdd0e85895cd004de7c`
 - Deployment: Render reports the deploy as **live**.
 - Production remains separate and was not changed: https://paypilot-ai-1qw8.onrender.com/
 
