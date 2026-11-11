@@ -37,6 +37,25 @@ test('PayPal webhook verifier sends the event and transmission headers to the of
   assert.equal(payload.transmission_id, 'transmission-1');
 });
 
+test('PayPal can read an existing webhook event through the Sandbox API without resending it', async () => {
+  const calls = [];
+  const event = { id: 'WH-COC11055RA711503B-4YM959094A144403T', event_type: 'CHECKOUT.ORDER.APPROVED', create_time: '2026-11-11T10:00:00Z', summary: 'Test event' };
+  const paypal = createPayPal({
+    clientId: 'sandbox-client', secret: 'sandbox-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v1/oauth2/token')) return response(200, { access_token: 'sandbox-access-token', expires_in: 3600 });
+      return response(200, event);
+    },
+  });
+  const result = await paypal.getWebhookEvent(event.id);
+  assert.deepEqual(result, event);
+  assert.equal(calls[1].url, 'https://api-m.sandbox.paypal.com/v1/notifications/webhooks-events/' + event.id);
+  assert.equal(calls[1].options.method, 'GET');
+  assert.equal(calls[1].options.headers.Authorization, 'Bearer sandbox-access-token');
+  await assert.rejects(paypal.getWebhookEvent('../bad'), /Invalid PayPal webhook event ID/);
+});
+
 test('PayPal webhook verifier returns false when required verification inputs are missing', async () => {
   let called = false;
   const paypal = createPayPal({
