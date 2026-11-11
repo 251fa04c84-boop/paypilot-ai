@@ -94,6 +94,7 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 | Check | Evidence/status |
 |---|---|
 | Staging homepage and health endpoint | Browser inspection succeeded; homepage loaded without visible errors and `GET /api/health` returned HTTP 200 on 11 November 2026. |
+| Gemini assistant read-only browser check | Live staging test returned invoice-specific overdue and dispute evidence and did not create proposals, approvals, payment links or execute actions. |
 | PostgreSQL persistence and tenant isolation | GitHub Actions PostgreSQL integration workflow run `43035812286` completed successfully, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration. |
 | Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
 | PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. A previous end-to-end Sandbox checkout was reported by the maintainer; no new payment was initiated during this staging verification. |
