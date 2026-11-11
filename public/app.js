@@ -607,7 +607,7 @@ async function viewReconciliation() {
       const result = await api('POST', '/api/reconciliation/preview', { csv: csv.value });
       const rows = result.results || [];
       const counts = rows.reduce((acc, item) => { acc[item.result] = (acc[item.result] || 0) + 1; return acc; }, {});
-      const labels = { candidate: 'Review candidates', mismatch: 'Amount / currency mismatches', disputed: 'Disputed — paused', already_paid: 'Already marked paid', unmatched: 'Unmatched invoices', ambiguous: 'Ambiguous references', duplicate: 'Duplicate transaction IDs', not_completed: 'Not completed', invalid: 'Invalid rows' };
+      const labels = { candidate: 'Review candidates', mismatch: 'Amount / currency mismatches', disputed: 'Disputed — paused', already_paid: 'Already marked paid', unmatched: 'Unmatched invoices', ambiguous: 'Ambiguous references', duplicate: 'Duplicate transaction IDs', not_completed: 'Not completed', status_missing: 'Status missing', invalid: 'Invalid rows' };
       output.append(h('div', { class: 'card glow' },
         h('div', { class: 'row' }, h('strong', {}, 'Preview results'), h('span', { class: 'badge none' }, 'No records changed')),
         h('p', { class: 'muted small' }, `${rows.length} transaction rows reviewed`),
@@ -626,7 +626,7 @@ async function viewReconciliation() {
   const sample = h('button', { class: 'btn', type: 'button', onclick: () => { csv.value = example; error.textContent = ''; } }, 'Load sample CSV');
   main.append(h('section', { class: 'card' },
     h('div', { class: 'row' }, h('strong', {}, 'Import transaction evidence'), h('span', { class: 'badge none' }, 'CSV · max 250 rows')),
-    h('p', { class: 'muted small' }, 'Required columns: Invoice Number, Amount, Currency. Optional: Transaction ID and Status. Only completed/captured/success statuses can become review candidates.'),
+    h('p', { class: 'muted small' }, 'Required columns: Invoice Number, Amount, Currency. Optional: Transaction ID and Status. Rows without a completed provider status remain unverified and cannot become review candidates.'),
     csv,
     h('div', { class: 'actions' }, sample, run),
     error));
