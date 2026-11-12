@@ -1,6 +1,6 @@
 # PayPilot AI — Submission Readiness
 
-Last verified: 12 November 2026, 06:06 UTC (live staging API, browser walkthrough, PayPal simulator signature and CI)
+Last verified: 12 November 2026, 06:26 UTC (live staging API, least-privilege database roles, 22/22 Safety Lab and CI)
 
 ## Judge links
 
@@ -14,9 +14,10 @@ Last verified: 12 November 2026, 06:06 UTC (live staging API, browser walkthroug
 
 - Render service: `paypilot-ai-pg-staging` (Singapore, free tier).
 - Configured branch: `codex/paypilot-real-postgres-staging`.
-- Latest live deployment: `dep-dbqle2bbc2fs73do0feg`, commit `f7cb136306ddf7234fcc51d065efa7692d7a79f3`.
+- Latest verified deployment after the database-role switch: `dep-dbqlnl5bedkc73e1b2hg`, commit `e7b3f5c391e02175bad5fadaf92719110d92406a`; Render reports succeeded.
 - Build succeeded and Node 22 started successfully.
 - The visible shared-demo disclosure banner is present in the deployed browser UI.
+- Render now uses `paypilot_staging_runtime` for `DATABASE_URL` and `paypilot_account_provisioner` for `ACCOUNT_PROVISIONING_DATABASE_URL`; the Neon credentials are stored only in Render environment variables, not in this repository.
 - Staging `APP_BASE_URL` has been explicitly set to `https://paypilot-ai-pg-staging.onrender.com`, so newly generated payment/reminder links use the staging origin. Historical proposals already stored with the previous preview URL were not edited. A new proposal was not generated just to test the link, because that would mutate shared demo data.
 - The free-tier service may return a temporary 503 while waking. A retry succeeded; this audit did not find evidence of a persistent crash.
 - PayPal simulator verification timestamp: `2026-11-12T06:03:40.832Z`. The mock event is not a real capture and is not treated as one.
@@ -31,19 +32,21 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 - Financial snapshot: USD 6,440 outstanding/overdue; USD 1,200 in the 30+ days at-risk bucket; USD 950 disputed; USD 0 PayPal-verified captures; 2 operator-confirmed reminders.
 - Command Centre: 22/22 deterministic Safety Lab checks passed; the page states no AI calls, no provider calls and no mutations.
 - Trust Centre: tenant-scoped PostgreSQL, signed private sessions, human approval, server-side capture verification and audit log are configured. PayPal mock simulator signature is verified; real transaction webhook delivery and email inbox delivery remain unverified. Public demo mutations are disabled.
+- `/api/health` reports `ok:true`, PostgreSQL tenant-scoped storage, `auth.enabled:true`, Gemini and PayPal Sandbox configured, Brevo configured, and `publicMutationsEnabled:false`.
 - Trust caveats are visible: real PayPal webhook delivery and email inbox delivery are not independently verified. Public shared-demo mutations are disabled; judges can inspect synthetic data without changing it.
 - API smoke checks for health, invoices, recovery queue, summary, risk, Safety Lab, read-only simulation, Trust Centre, activity and proposals completed without errors. These were GET/read-only requests.
 - GitHub Actions run `43165278581` passed: Node 22 syntax checks succeeded; the complete test suite reported 211 tests, 210 passed, 0 failed and 1 skipped. PostgreSQL integration run `43165285104` also passed, including the complete password-reset least-privilege migration and function tests.
 
-## Password-reset least-privilege fix — prepared, not yet applied
+## Password-reset least-privilege fix — applied to staging and live-verified
 
-- Read-only `pg_stat_activity` inspection confirmed the deployed Render app uses `paypilot_staging_runtime` and `paypilot_account_provisioner`; both are non-`BYPASSRLS` roles. The `paypilot_app` role is the Neon administration connection, not the observed Render runtime.
-- The currently deployed password-reset SECURITY DEFINER functions are still owned by `paypilot_app`, so the reset path retains an unnecessarily broad function-owner boundary until the new migration is applied.
-- New one-time migration: `db/migrations/20261112_password_reset_executor.sql`. It creates a `NOLOGIN`, non-superuser `paypilot_reset_executor` role with narrowly scoped `BYPASSRLS`, transfers only the reset tables/functions, limits its column grants, pins `search_path` to `pg_catalog, pg_temp`, denies direct table access with forced RLS, and grants function execution only to `paypilot_account_provisioner`.
-- A fresh disposable Neon branch applied the exact migration successfully as `paypilot_app`. Post-migration checks confirmed: reset executor cannot log in, is not superuser, owns only reset objects, has no schema CREATE privilege; runtime/provisioner cannot read reset tokens; runtime cannot execute reset functions; provisioner can execute; token RLS is enabled and forced; the admin connection cannot inherit reset privileges and can SET ROLE explicitly for future maintenance.
-- The migration also fixes the live schema mismatch: reset completion must update `password_updated_at`, not the stale `updated_at` name.
-- The migration and reset flow are covered by the disposable PostgreSQL integration workflow. A separate disposable Neon branch confirmed the role/table/function ownership transfer and the reset-token creation path.
-- The migration has **not** been applied to the live staging database. It is a one-time ownership transfer and must not be rerun after success. Apply it only after explicit confirmation of this exact staging change. The older `20261112_password_reset_least_privilege.sql` is marked superseded and intentionally performs no SQL.
+- Applied the reviewed one-time migration `db/migrations/20261112_password_reset_executor.sql` to the staging Neon branch only. The separate production Render service and database were not modified.
+- The migration creates a `NOLOGIN`, non-superuser `paypilot_reset_executor` role with narrowly scoped `BYPASSRLS`, transfers ownership of reset-token tables and reset SECURITY DEFINER functions, pins the function search path to `pg_catalog, pg_temp`, denies direct token-table access through forced RLS, and grants only reset-function execution to `paypilot_account_provisioner`.
+- The live staging database now confirms: `paypilot_reset_executor` cannot log in and is not a superuser; it owns the reset-token table and completion function; RLS is enabled and forced; `paypilot_staging_runtime` cannot read reset tokens or execute reset functions; `paypilot_account_provisioner` cannot read reset tokens but can execute the three reset functions.
+- Render's staging `DATABASE_URL` now uses `paypilot_staging_runtime`; `ACCOUNT_PROVISIONING_DATABASE_URL` uses `paypilot_account_provisioner`. Both credentials are stored as Render secrets and are not committed to Git.
+- The app restarted successfully after the credential switch. Live health reports `ok:true`, PostgreSQL storage and `auth.enabled:true`. The Safety Lab still reports 22/22 passed.
+- A live Trust Centre check now verifies reset-token table permissions, function permissions, ownership and forced RLS rather than relying only on a configuration flag.
+- The broad `paypilot_app` role remains a Neon administration/maintenance identity and must not be used as either Render runtime connection. The deployed Render app now uses the dedicated restricted roles.
+- The migration and reset flow pass disposable PostgreSQL integration tests. No real password reset was initiated and no email was sent.
 
 ## What PayPilot demonstrates
 
@@ -66,7 +69,7 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 | PayPal Sandbox capture | Current live staging snapshot shows zero verified captures and Acme Studio D-1001 remains open. A prior operator-reported test is not reflected in the current staging ledger; no new payment was initiated during this audit |
 | PayPal webhook | PayPal mock simulator event reached the actual staging callback and its signature verified. Real buyer-approved transaction webhook remains unverified |
 | Password-reset email | Brevo sender is active and the app reports configured; no test email has been sent and inbox delivery is not verified |
-| Password-reset table least privilege | New restricted-owner migration is prepared and CI-tested; it has not yet been applied to live staging |
+| Password-reset table least privilege | Applied to staging; live role/ACL/RLS checks pass; reset flow covered by disposable PostgreSQL integration tests |
 | New payment/reminder link origin | `APP_BASE_URL` set to staging; no new proposal was generated to avoid shared-demo mutation |
 | Public judge mutations | Disabled on staging; the shared public tenant is read-only |
 | Production | Separate production service was not accessed or modified |
@@ -82,4 +85,4 @@ Official deadline: 12 November 2026 at 12:00 PM Pacific Time (13 November 2026 a
 
 ## Safety boundaries during this audit
 
-No production operation, payment, email send, password reset, demo seed/reset, invoice mutation or live database migration was performed. All live application checks were read-only; the only staging configuration change was setting the non-secret `APP_BASE_URL` to the staging origin.
+No production operation, payment, email send, password reset, demo seed/reset or invoice mutation was performed. The staging-only password-reset security migration was applied, and the two Render database connection variables were switched to dedicated least-privilege roles. All post-deploy application checks were read-only.
