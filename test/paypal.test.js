@@ -253,7 +253,7 @@ test('PayPal can inspect a registered Sandbox webhook without exposing credentia
   await assert.rejects(paypal.getWebhook('../bad'), /Invalid PayPal webhook ID/);
 });
 
-test('PayPal Sandbox simulator queues only a registered webhook and capture-completed event', async () => {
+test('PayPal Sandbox simulator queues only the registered staging webhook URL and capture-completed event', async () => {
   const calls = [];
   const paypal = createPayPal({
     clientId: 'sandbox-client',
@@ -265,20 +265,20 @@ test('PayPal Sandbox simulator queues only a registered webhook and capture-comp
     },
   });
   const result = await paypal.simulateWebhookEvent({
-    webhookId: 'WEBHOOK-TEST-123456',
+    url: 'https://paypilot-ai-pg-staging.onrender.com/api/paypal/webhook',
     eventType: 'PAYMENT.CAPTURE.COMPLETED',
   });
   assert.equal(result.status, 202);
   assert.equal(calls[1].url, 'https://api-m.sandbox.paypal.com/v1/notifications/simulate-event');
   assert.deepEqual(JSON.parse(calls[1].options.body), {
-    webhook_id: 'WEBHOOK-TEST-123456',
+    url: 'https://paypilot-ai-pg-staging.onrender.com/api/paypal/webhook',
     event_type: 'PAYMENT.CAPTURE.COMPLETED',
     resource_version: '2.0',
   });
   await assert.rejects(paypal.simulateWebhookEvent({
-    webhookId: '../bad',
+    url: 'https://attacker.example/api/paypal/webhook',
     eventType: 'PAYMENT.CAPTURE.COMPLETED',
-  }), /Only the configured/);
+  }), /Only the registered staging/);
 });
 
 test('CRC32 implementation matches the standard check vector', () => {
