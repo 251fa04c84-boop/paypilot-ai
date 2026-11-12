@@ -410,10 +410,12 @@ function createApp(opts = {}) {
       emailConfigured: Boolean(emailProvider.configured),
       publicDemoMutationsEnabled,
       webhookSimulatorVerified: Boolean(settings.webhookSimulatorVerifiedAt),
+      webhookDeliveryVerified: Boolean(settings.webhookDeliveryVerifiedAt),
     });
     return { json: {
       environment: 'PayPal Sandbox only',
       webhookSimulatorVerifiedAt: settings.webhookSimulatorVerifiedAt || null,
+      webhookDeliveryVerifiedAt: settings.webhookDeliveryVerifiedAt || null,
       storage: pgMode ? 'PostgreSQL tenant-scoped' : 'JSON file — not durable on free hosting',
       controls: trust.controls,
       boundaries: [
@@ -558,6 +560,10 @@ function createApp(opts = {}) {
     }
     if (!verified && verificationError) throw new HttpError(503, 'PayPal could not verify the webhook right now. The event can be retried.');
     if (!verified) throw new HttpError(401, 'PayPal webhook signature verification failed.');
+    settings.webhookDeliveryVerifiedAt = iso();
+    settings.webhookLastVerifiedEventId = eventId;
+    settings.webhookLastVerifiedEventType = event;
+    store.save();
     const cutoff = Date.parse(iso()) - 30 * 86400000;
     db.processedWebhookEvents = db.processedWebhookEvents
       .filter((x) => x && typeof x.id === 'string' && Date.parse(x.at) >= cutoff)
