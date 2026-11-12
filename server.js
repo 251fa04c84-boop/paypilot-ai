@@ -401,7 +401,12 @@ function createApp(opts = {}) {
     const row = risk.items.find((i) => i.invoiceId === invoice.id);
     return { json: simulateRecovery({ invoice, action: query.action, today: todayStr(), riskSignals: row ? row.signals : [], orders: db.orders }) };
   });
-  route('GET', '/api/trust', () => {
+  route('GET', '/api/trust', async () => {
+    const passwordResetIsolation = Boolean(
+      pgMode && repository &&
+      typeof repository.checkPasswordResetIsolation === 'function' &&
+      await repository.checkPasswordResetIsolation()
+    );
     const trust = buildTrustStatus({
       pgMode,
       authEnabled,
@@ -411,6 +416,7 @@ function createApp(opts = {}) {
       publicDemoMutationsEnabled,
       webhookSimulatorVerified: Boolean(settings.webhookSimulatorVerifiedAt),
       webhookDeliveryVerified: Boolean(settings.webhookDeliveryVerifiedAt),
+      passwordResetIsolation,
     });
     return { json: {
       environment: 'PayPal Sandbox only',
