@@ -15,7 +15,7 @@ Last verified: 12 November 2026, 01:17 UTC (read-only staging health and API ins
 - `GET /api/health` returned HTTP 200 and `ok: true`.
 - Health reports PostgreSQL tenant-scoped storage, Gemini configured, PayPal Sandbox configured, signed-session auth enabled, and Brevo configured.
 - Public judge-demo mutations are enabled for shared synthetic records. Public reset and demo-admin controls are disabled. Do not enter personal or confidential data.
-- `GET /api/safety-lab` returned 22/22 deterministic checks on the deployed PR #52 build, with zero provider calls, zero model calls and zero mutations.
+- `GET /api/safety-lab` returned 22/22 deterministic checks on the deployed PR #54 build, with zero provider calls, zero model calls and zero mutations.
 - `GET /api/intelligence/overview` returned seven open invoices, five risk-flagged invoices and three ledger consistency anomalies. The anomaly disclaimer correctly says these are not fraud determinations.
 - `GET /api/trust` reports the Sandbox webhook ID and email provider configured. This reports configuration, not successful delivery.
 - PR #54 CI passed: the Node 22 suite reported 200 tests, 199 passed, zero failed and one skipped; PostgreSQL integration passed tenant isolation, concurrent writes, cross-connection persistence and HTTP route checks.
@@ -32,7 +32,7 @@ Last verified: 12 November 2026, 01:17 UTC (read-only staging health and API ins
 
 1. **PayPal webhook delivery:** webhook ID is configured and signature/replay handling is covered by automated tests. Live delivery to this staging app is not independently verified; a previous read-only lookup found no matching event and zero listed events.
 2. **Password-reset email:** Brevo is configured on staging. A prior reset request returned a generic accepted response, but that response intentionally does not disclose whether an account exists. Inbox delivery is not independently verified.
-3. **Safety Lab:** PR #52 is merged and deployed. The live endpoint returned 18/18. These are deterministic policy regressions, not a penetration test or proof of live PayPal delivery.
+3. **Safety Lab:** PR #54 is merged and deployed. The live endpoint returned 22/22. These are deterministic policy regressions, not a penetration test or proof of live PayPal delivery.
 4. **Judge interaction:** public judge-demo actions can change shared synthetic records. Public reset and demo-admin controls are disabled.
 
 ## Safe submission claims
