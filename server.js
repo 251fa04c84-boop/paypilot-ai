@@ -1049,7 +1049,7 @@ function createApp(opts = {}) {
   });
   async function runWebhookSimulator() {
     if (!webhookSimulatorEnabled || env.PAYPAL_WEBHOOK_SIMULATOR_ON_START !== 'true' ||
-        webhookSimulatorTriggered || settings.webhookSimulatorVerifiedAt) return null;
+        webhookSimulatorTriggered) return null;
     if (typeof paypal.simulateWebhookEvent !== 'function') throw new Error('PayPal Sandbox simulator client is unavailable.');
     webhookSimulatorTriggered = true;
     if (typeof paypal.getWebhook !== 'function') throw new Error('PayPal Sandbox webhook lookup is unavailable.');
