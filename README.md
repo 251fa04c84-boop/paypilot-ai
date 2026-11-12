@@ -4,7 +4,7 @@
 **Source:** https://github.com/251fa04c84-boop/paypilot-ai  
 **Hackathon:** PayPal AI Hackathon 2026
 
-PayPilot AI is an evidence-first receivables recovery agent for small businesses. It turns a scattered invoice list into a prioritised, explainable recovery plan: deterministic rules identify which accounts need attention, Gemini can translate the evidence into plain language, a human approves the exact next action, and PayPal Sandbox confirms whether money was actually captured. Every decision and outcome is traceable.
+PayPilot AI is an evidence-first receivables recovery agent for small businesses. It turns a scattered invoice list into a prioritised, explainable recovery plan: deterministic rules identify which accounts need attention, Gemini can translate the evidence into plain language, a human approves the exact next action, and PayPal Sandbox verifies whether a payment was actually captured. Every decision and outcome is traceable.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
 > **Restricted demo:** there is no login or tenant isolation. Production browser-facing mutations are disabled by default; set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` only when intentionally opening the shared judge workflow. Invoice create/edit/delete/manual settlement remain disabled in production regardless. Verified PayPal capture and signed webhook endpoints remain available. Use only included demo data; do not enter real customer or financial information.  
@@ -18,16 +18,26 @@ PayPilot AI is an evidence-first receivables recovery agent for small businesses
 
 ## What makes PayPilot different
 
-Most invoice tools stop at reminders, and most chat interfaces stop at suggestions. PayPilot connects the portfolio-level decision to a controlled, verifiable workflow:
+PayPilot deliberately focuses on the difficult hand-off between an unpaid-invoice list and a safe, verifiable recovery action. It connects portfolio-level prioritisation to a controlled workflow:
 
 - **Portfolio-first, not prompt-first:** one sweep evaluates every open invoice and stages a ranked set of proposals.
-- **Explainable prioritisation:** the score is a transparent urgency heuristic built from days overdue, invoice amount, reminder history and due-soon timing. It is not a probability of payment or a credit score.
+- **Explainable prioritisation:** the score is a transparent urgency heuristic built from days overdue, reminder history and due-soon timing. Invoice amounts are shown as context but excluded from cross-currency scoring. It is not a probability of payment or a credit score.
 - **Evidence before language:** verified invoice facts and deterministic rules are kept separate from optional Gemini commentary.
 - **Human authority at the point of action:** the operator reviews the exact proposed action; the server revalidates the invoice and approval before execution.
 - **Money movement is not inferred:** a checkout is only an order. An invoice is marked paid only after server-side PayPal Sandbox capture verification or a verified signed webhook.
 - **Safety is part of the workflow:** disputed and paid invoices are blocked; recent reminders can trigger a wait recommendation; untrusted invoice notes cannot instruct the agent.
 
 The product's core differentiator is the full chain from portfolio triage to evidence-backed approval to verified payment—not a claim that an LLM autonomously controls money.
+
+## 90-second judge path
+
+1. **Start with the portfolio (15 seconds):** open Mission Control and identify which invoices are overdue, which are disputed, and how exposure is grouped by currency.
+2. **Inspect one decision (20 seconds):** open an overdue invoice. Point to its due date, reminder history, score explanation, evidence, risks and unknowns. The score ranks urgency; it does not predict payment.
+3. **Challenge the agent (15 seconds):** open the disputed Harbor Dental scenario and show that both collection actions are blocked. Then inspect Injection Test to show invoice notes are treated as untrusted data.
+4. **Show human control (20 seconds):** run the portfolio sweep, open a proposal, and show the exact action and approval state. Explain that approval expires and the server revalidates the invoice before execution.
+5. **Close on PayPal verification (20 seconds):** explain that a Sandbox order is not a payment. Only a completed capture verified server-side against invoice association, amount and currency can mark the invoice paid. Show a verified capture only if one is actually visible in the current session.
+
+**Judge takeaway:** PayPilot does not give an LLM authority over money. Deterministic policy decides what is allowed, a human approves the exact action, PayPal supplies payment evidence, and the audit trail records the outcome.
 
 ## Judge evaluation map
 
