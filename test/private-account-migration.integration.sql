@@ -1,4 +1,4 @@
--- Validate the additive private-account migration in a disposable CI database.
+-- Validate the additive private-account migration and reset-table lockdown in a disposable CI database.
 BEGIN;
 
 INSERT INTO public.paypilot_tenants (tenant_id, tenant_kind)
@@ -14,6 +14,9 @@ SELECT repeat('c', 64), tenant_id, user_id, now() + interval '1 day'
 FROM public.paypilot_users WHERE email_normalized = 'ci-account@example.test';
 
 DO $$
+DECLARE
+  reset_rls_enabled boolean;
+  reset_rls_forced boolean;
 BEGIN
   IF has_table_privilege('paypilot_account_provisioner', 'public.paypilot_users', 'SELECT') THEN
     RAISE EXCEPTION 'account provisioner must not have direct user-table SELECT';
@@ -26,6 +29,37 @@ BEGIN
   END IF;
   IF NOT has_function_privilege('paypilot_staging_runtime', 'public.paypilot_resolve_session(text,timestamp with time zone)', 'EXECUTE') THEN
     RAISE EXCEPTION 'runtime is missing session resolver execution after migration';
+  END IF;
+
+  IF has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_reset_tokens', 'SELECT')
+     OR has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_reset_tokens', 'INSERT')
+     OR has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_reset_tokens', 'UPDATE')
+     OR has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_reset_tokens', 'DELETE') THEN
+    RAISE EXCEPTION 'runtime must not have direct password-reset token table privileges';
+  END IF;
+  IF has_table_privilege('paypilot_account_provisioner', 'public.paypilot_password_reset_tokens', 'SELECT')
+     OR has_table_privilege('paypilot_account_provisioner', 'public.paypilot_password_reset_tokens', 'INSERT')
+     OR has_table_privilege('paypilot_account_provisioner', 'public.paypilot_password_reset_tokens', 'UPDATE')
+     OR has_table_privilege('paypilot_account_provisioner', 'public.paypilot_password_reset_tokens', 'DELETE') THEN
+    RAISE EXCEPTION 'account provisioner must use the restricted reset functions, not direct token-table access';
+  END IF;
+
+  SELECT c.relrowsecurity, c.relforcerowsecurity
+    INTO reset_rls_enabled, reset_rls_forced
+  FROM pg_class c
+  WHERE c.oid = 'public.paypilot_password_reset_tokens'::regclass;
+  IF reset_rls_enabled IS NOT TRUE OR reset_rls_forced IS NOT TRUE THEN
+    RAISE EXCEPTION 'password reset token table must have ENABLE and FORCE ROW LEVEL SECURITY';
+  END IF;
+
+  IF to_regclass('public.paypilot_password_resets') IS NOT NULL
+     AND (
+       has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_resets', 'SELECT')
+       OR has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_resets', 'INSERT')
+       OR has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_resets', 'UPDATE')
+       OR has_table_privilege('paypilot_staging_runtime', 'public.paypilot_password_resets', 'DELETE')
+     ) THEN
+    RAISE EXCEPTION 'runtime must not have direct privileges on the legacy password reset table';
   END IF;
 END $$;
 
