@@ -1,13 +1,13 @@
 # PayPilot AI — Submission Readiness
 
-Last verified: 12 November 2026 (read-only staging health and API inspection)
+Last verified: 12 November 2026, 01:17 UTC (read-only staging health and API inspection)
 
 ## Public staging demo
 
 - URL: https://paypilot-ai-pg-staging.onrender.com/
 - Environment: Render free-tier staging service, Singapore region
 - Branch: `codex/paypilot-real-postgres-staging`
-- Last confirmed deployed commit: `b0cb1f7c382da42422cfd6bc86c952343e90bac6` (Render deploy `dep-dbqglsoae00c738boue0`)
+- Last confirmed deployed commit: `e178346c1d3cc452f08325a8698edce4718b8d2a` (Render deploy `dep-dbqh6m56e07s73f6rfug`)
 - Production remains separate and untouched: https://paypilot-ai-1qw8.onrender.com/
 
 ## What was verified on 12 November
@@ -15,17 +15,18 @@ Last verified: 12 November 2026 (read-only staging health and API inspection)
 - `GET /api/health` returned HTTP 200 and `ok: true`.
 - Health reports PostgreSQL tenant-scoped storage, Gemini configured, PayPal Sandbox configured, signed-session auth enabled, and Brevo configured.
 - Public judge-demo mutations are enabled for shared synthetic records. Public reset and demo-admin controls are disabled. Do not enter personal or confidential data.
-- `GET /api/safety-lab` returned 18/18 deterministic checks on the deployed PR #52 build, with zero provider calls, zero model calls and zero mutations.
+- `GET /api/safety-lab` returned 22/22 deterministic checks on the deployed PR #52 build, with zero provider calls, zero model calls and zero mutations.
 - `GET /api/intelligence/overview` returned seven open invoices, five risk-flagged invoices and three ledger consistency anomalies. The anomaly disclaimer correctly says these are not fraud determinations.
 - `GET /api/trust` reports the Sandbox webhook ID and email provider configured. This reports configuration, not successful delivery.
-- PR #52 CI passed: the Node 22 suite reported 196 tests, 195 passed, zero failed and one skipped; PostgreSQL integration passed tenant isolation, concurrent writes, cross-connection persistence and HTTP route checks.
+- PR #54 CI passed: the Node 22 suite reported 200 tests, 199 passed, zero failed and one skipped; PostgreSQL integration passed tenant isolation, concurrent writes, cross-connection persistence and HTTP route checks.
 - No payment, email send, reset, seed, invoice mutation or production operation was performed during this verification.
 
-## Pending staging update
+## Latest staging hardening (PR #54)
 
-- PR #54 adds strict PayPal order-ID binding, exactly-one-purchase-unit/capture enforcement, capture-ID validation, and expands the deterministic Safety Lab from 18 to 22 checks.
-- PR #54 is not yet merged or deployed. The currently deployed staging service remains at 18/18 until CI passes, the PR is merged, and a staging-only deployment is verified.
-- Do not claim the 22/22 result in a submission video until the live staging endpoint confirms it.
+- PR #54 is merged and deployed to the staging service only.
+- PayPal capture verification now binds the provider response to the locally recorded order ID, requires exactly one purchase unit and one capture for this single-invoice workflow, and requires a non-empty provider capture ID.
+- The deployed Safety Lab returns 22/22 deterministic checks, with zero provider calls, zero model calls and zero mutations.
+- Render deployment `dep-dbqh6m56e07s73f6rfug` is live on commit `e178346c1d3cc452f08325a8698edce4718b8d2a`.
 
 ## Remaining external verification
 
@@ -36,7 +37,7 @@ Last verified: 12 November 2026 (read-only staging health and API inspection)
 
 ## Safe submission claims
 
-PayPilot is an evidence-first receivables recovery demo using deterministic invoice rules, optional Gemini explanations, human approval gates, PayPal Sandbox payment verification, tenant-scoped PostgreSQL persistence, and an audit trail. The deployed Safety Lab exercises 18 deterministic policy, payment-evidence and approval-snapshot checks without provider calls or mutations. It is not a penetration test.
+PayPilot is an evidence-first receivables recovery demo using deterministic invoice rules, optional Gemini explanations, human approval gates, PayPal Sandbox payment verification, tenant-scoped PostgreSQL persistence, and an audit trail. The deployed Safety Lab exercises 22 deterministic policy, payment-evidence and approval-snapshot checks without provider calls or mutations. It is not a penetration test.
 
 Do not claim real-money processing, proven recovery-rate improvements, independently verified live webhook delivery, or verified password-reset inbox delivery.
 
@@ -46,3 +47,4 @@ Do not claim real-money processing, proven recovery-rate improvements, independe
 - Source repository: https://github.com/251fa04c84-boop/paypilot-ai
 - Staging implementation PR: https://github.com/251fa04c84-boop/paypilot-ai/pull/28
 - Evidence/trust/safety improvement PR: https://github.com/251fa04c84-boop/paypilot-ai/pull/50
+- PayPal capture hardening and 22-check Safety Lab PR: https://github.com/251fa04c84-boop/paypilot-ai/pull/54
