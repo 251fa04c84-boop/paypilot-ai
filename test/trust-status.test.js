@@ -10,11 +10,12 @@ test('distinguishes configured integrations from independently verified delivery
   });
   assert.equal(result.controls.webhookConfigured, true);
   assert.equal(result.controls.webhookDeliveryVerified, false);
+  assert.equal(result.controls.webhookSimulatorVerified, false);
   assert.equal(result.controls.emailConfigured, true);
   assert.equal(result.controls.emailDeliveryVerified, false);
   assert.equal(result.controls.tenantScopedStorage, true);
   assert.equal(result.controls.signedSessions, true);
-  assert.ok(result.caveats.some((x) => x.includes('webhook delivery has not been independently verified')));
+  assert.ok(result.caveats.some((x) => x.includes('real PayPal Sandbox transaction webhook has not yet been independently verified')));
   assert.ok(result.caveats.some((x) => x.includes('email delivery has not been independently verified')));
   assert.ok(result.caveats.some((x) => x.includes('shared synthetic records')));
 });
@@ -31,4 +32,16 @@ test('reports missing infrastructure without claiming it is configured', () => {
   assert.equal(result.controls.publicDemoMutations, false);
   assert.ok(result.caveats.some((x) => x.includes('PayPal webhook ID is not configured')));
   assert.ok(result.caveats.some((x) => x.includes('Transactional email provider is not configured')));
+});
+
+
+test('reports a verified mock simulator separately from real webhook delivery', () => {
+  const result = buildTrustStatus({
+    pgMode: true, authEnabled: true, webhookConfigured: true,
+    aiConfigured: true, emailConfigured: true, publicDemoMutationsEnabled: false,
+    webhookSimulatorVerified: true,
+  });
+  assert.equal(result.controls.webhookSimulatorVerified, true);
+  assert.equal(result.controls.webhookDeliveryVerified, false);
+  assert.ok(result.caveats.some((x) => x.includes('mock event')));
 });
