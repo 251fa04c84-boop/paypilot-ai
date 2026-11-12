@@ -8,7 +8,7 @@ The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. Public 
 
 ## Under-three-minute judge narrative
 
-The official PayPal AI Hackathon video limit is less than three minutes. Use [FINAL_DEMO_SCRIPT.md](FINAL_DEMO_SCRIPT.md) for the timed sequence. Staging exposes the 22-check deterministic Safety Lab in Command Centre and at `/api/safety-lab`. The live endpoint returned 22/22 on 12 November 2026 at 05:25 UTC. These are policy regression checks, not a penetration test.
+The official PayPal AI Hackathon video limit is less than three minutes. Use [FINAL_DEMO_SCRIPT.md](FINAL_DEMO_SCRIPT.md) for the timed sequence. Staging exposes the 22-check deterministic Safety Lab in Command Centre and at `/api/safety-lab`. The live endpoint returned 22/22 on 12 November 2026 at 05:30 UTC. These are policy regression checks, not a penetration test.
 
 ## Two-minute judge narrative
 
