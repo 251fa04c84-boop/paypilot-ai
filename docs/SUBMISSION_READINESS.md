@@ -18,6 +18,8 @@ Last verified: 12 November 2026, 01:17 UTC (read-only staging health and API ins
 - `GET /api/safety-lab` returned 22/22 deterministic checks on the deployed PR #54 build, with zero provider calls, zero model calls and zero mutations.
 - `GET /api/intelligence/overview` returned seven open invoices, five risk-flagged invoices and three ledger consistency anomalies. The anomaly disclaimer correctly says these are not fraud determinations.
 - `GET /api/trust` reports the Sandbox webhook ID and email provider configured. This reports configuration, not successful delivery.
+- A read-only browser smoke test after deployment confirmed the app loaded without UI errors, Command Centre displayed all 22 passing checks, and Trust Centre displayed the webhook/email delivery caveats and shared-demo-data warning. No mutation actions were clicked.
+- CSV reconciliation preview is covered by automated tests but was not included in this live browser smoke test.
 - PR #54 CI passed: the Node 22 suite reported 200 tests, 199 passed, zero failed and one skipped; PostgreSQL integration passed tenant isolation, concurrent writes, cross-connection persistence and HTTP route checks.
 - No payment, email send, reset, seed, invoice mutation or production operation was performed during this verification.
 
