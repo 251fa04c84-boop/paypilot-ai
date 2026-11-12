@@ -8,11 +8,11 @@ The PayPal AI Hackathon lists five equally weighted criteria. Stage one is a pas
 
 | Category | Judge's likely question | PayPilot evidence | Remaining work |
 |---|---|---|---|
-| Technological implementation | Is PayPal central, is AI meaningful, and is the implementation non-trivial? | PayPal Orders v2 Sandbox, server-side capture verification, signed webhook verification, Gemini interpretation, deterministic agent tools, approval revalidation, audit events | Re-run all tests on current branch; verify current deployed version; document exact Sandbox setup; add durable storage only with a fully tested migration |
+| Technological implementation | Is PayPal central, is AI meaningful, and is the implementation non-trivial? | PayPal Orders v2 Sandbox, server-side capture verification, signed webhook verification, optional Gemini interpretation, deterministic agent tools, approval revalidation, tenant-scoped PostgreSQL, audit events, 22-check Safety Lab | Keep live deployment aligned with tested staging source; verify live provider delivery separately; resolve the remaining password-reset database-owner privilege issue before production use |
 | Design | Does this feel like a complete product? | Mission Control, financial snapshot grouped by currency, recovery queue, approval inbox, invoice evidence view, assistant, activity export | Verify refreshed layout in real mobile and desktop browsers; test empty/error/loading states and keyboard access; refine detail and approvals screens |
 | Potential impact | Is the user and problem specific, and is the benefit credible? | Small businesses managing overdue invoices; portfolio triage, dispute pause, reduced manual prioritisation and auditable workflow | Validate with real small-business operators if possible; measure time-to-prioritise and recovery outcomes; do not turn demo data into impact claims |
 | Innovation / idea | Why is this different from existing invoice reminders or chatbots? | Portfolio-level recovery plan with evidence, human authority, bounded actions and PayPal-verified settlement | Make the difference obvious in first 20 seconds; show disputed and already-paid safety paths; avoid claims of autonomous money control |
-| Presentation | Can judges understand and see it work end-to-end? | Hosted app, judge guide, reproducible overdue/dispute/paid/injection scenarios, Sandbox payment path | Record a public YouTube video under 3 minutes; ensure it shows the live app, real Sandbox buyer approval, server verification and audit result |
+| Presentation | Can judges understand and see it work end-to-end? | Hosted staging app, visible shared-demo disclosure, judge guide, overdue/dispute/injection scenarios, live 22/22 Safety Lab and audit trail | Record a public YouTube video under 3 minutes. The current live ledger has zero PayPal-verified captures; show the Safety Lab's payment-evidence checks instead of implying a completed payment |
 
 ## Positioning
 
@@ -25,7 +25,7 @@ Do not claim:
 - that Gemini makes payment or eligibility decisions;
 - that PayPilot sends email or SMS;
 - that simulated webhook events are real PayPal webhooks;
-- that the application is multi-tenant or production-ready;
+- that the public shared judge demo is isolated per visitor or that the application is production-ready; private signed-session workspaces and tenant-scoped PostgreSQL exist, but a live password-reset database-owner privilege issue remains unresolved;
 - that a Sandbox payment moves real money;
 - that demo data proves customer impact.
 
@@ -61,7 +61,7 @@ These are competitor-published descriptions, not independent security or product
 
 PayPilot should not claim that no competitor has a real Sandbox integration. SettleSight and Kioku also describe Sandbox operations. Its defensible proof is narrower and specific:
 
-1. A previously completed, buyer-approved PayPal Sandbox checkout and capture for Acme Studio D-1001 ($1,200 USD), with server-side invoice/amount/currency/completed-status verification. This historical transaction is not present in the reset live demo dataset.
+1. The application implements server-side PayPal Sandbox capture verification bound to the stored order, invoice, amount and currency. A prior operator-reported $1,200 Sandbox test is not present in the current staging ledger; the live snapshot shows Acme Studio D-1001 still open and zero verified captures. Do not present the historical test as current live evidence.
 2. Dispute-aware blocking, including protection against capture after dispute status changes.
 3. Approval snapshot revalidation: material invoice edits cancel stale proposals before execution.
 4. Currency-neutral urgency ranking and currency-grouped exposure.
@@ -79,13 +79,13 @@ PayPilot should not claim that no competitor has a real Sandbox integration. Set
 
 ## Demo story
 
-1. Start in Mission Control and explain the portfolio-level problem.
-2. Run the Autopilot sweep and show proposals in the approval queue.
-3. Open an overdue invoice and separate facts, fixed rules, uncertainty and optional AI interpretation.
-4. Show a dispute or already-paid invoice being blocked.
-5. Approve a reminder draft and explain that the operator sends it outside PayPilot.
-6. Start a PayPal Sandbox checkout, complete it with a Sandbox buyer, then show server-verified capture and the audit trail.
-7. Close with the differentiator: prioritise with evidence, approve with control, verify the money.
+1. Start in Overview and explain the portfolio-level problem and currency-separated exposure.
+2. Open Risk Radar and inspect the disputed invoice; show the explicit hold.
+3. Open an overdue invoice and separate facts, fixed rules, uncertainty and optional AI commentary.
+4. In Command Centre, show the anomaly monitor and all 22 passing Safety Lab checks.
+5. Use the read-only recovery simulator to preview a reminder/checkout and explain that it does not create records or call PayPal.
+6. Show the approval expiry/revalidation boundary and audit history. A fresh portfolio sweep is optional and changes shared demo state.
+7. Close with the differentiator: prioritise with evidence, approve with control, and verify payment only with matching provider evidence. The current live snapshot has zero verified captures.
 
 
 ## Broader market benchmark — 9 November 2026
@@ -108,7 +108,7 @@ This comparison uses public product material and a recent comparative review. Ve
 | Agent governance | Upflow documents per-skill allow/approval/block controls and recorded agent runs; Tesorio markets controls and governance | Allowlisted actions, human approval, snapshot revalidation, dispute blocks, audit trail | **Strong differentiator.** Expand from global fixed policy to explicit per-action policy only after secure identity/tenant boundaries exist |
 | Payment security | PayPal requires server-side OAuth, HTTPS, secret protection and webhook signature verification | Server-side credentials, Sandbox-only integration, capture validation and signature-verification path | **Good foundation.** Still need deployed negative tests, durable event idempotency and tenant-bound order routing before production |
 | Reliability / operations | Mature platforms need retries, observability, incident response, backups and reconciliation | Node test suite, health endpoint, bounded API rate limits; Render free service may sleep | **Partial.** Add request IDs/structured redacted logs, backup/restore drill, alerting and persistent webhook state |
-| Data isolation / identity | Commercial systems require tenant-scoped users, roles and auditability | Public judge demo deliberately has no login; signed-session/Postgres foundations are not wired into request handling | **Critical production gap.** Do not store real business data or claim multi-tenancy yet |
+| Data isolation / identity | Commercial systems require tenant-scoped users, roles and auditability | Public judge demo is shared synthetic data; private workspaces use signed HttpOnly sessions and tenant-resolved PostgreSQL; CI covers tenant isolation and cross-connection persistence | **Improved but not production-ready.** The live password-reset tables/functions are owned by a BYPASSRLS database-owner role; the proposed least-privilege migration is not safe for that role and remains unapplied |
 | UX / accessibility | Commercial tools offer role-based work queues, customer context and reporting | Mobile-first Mission Control, invoice detail, approvals, assistant, activity export | **Promising prototype.** Add clear empty/error states, keyboard/screen-reader checks and a first-run guide |
 | Analytics / ROI proof | Mature tools show DSO, collection effectiveness, cash application rates and operational savings | Basic portfolio arithmetic; no real customer cohort or outcome evidence | **Gap.** Instrument triage time, approved follow-up, verified recovery and dispute safety; report only measured pilot results |
 | Pricing / target segment | Many established products target mid-market/enterprise and may require demos or quote-based plans | No paid plan or customer validation | **Opportunity, not a feature gap.** Stay focused on freelancers and small service businesses; test willingness to pay before building enterprise complexity |
@@ -124,11 +124,11 @@ The earlier Devpost comparison remains relevant: Unstuck is close to the recover
 | Recovery-specific workflow | Strong | Implemented triage, proposal, approval, execution and audit path |
 | AI usefulness | Moderate | Gemini interpretation is configured; fresh live response must be separately verified |
 | Human control / explainability | Strong | Deterministic eligibility, allowlisted actions, approval snapshot and dispute blocks |
-| Payment proof | Strong prototype capability | Historical Sandbox capture evidence and server-side checks; current live flow still needs a fresh end-to-end run |
+| Payment proof | Strong implementation safeguards, limited current live evidence | Server-side capture validation and 22 deterministic evidence tests; current live ledger shows zero verified captures and a stale open order |
 | Integration breadth | Weak | PayPal Sandbox only; no verified accounting/CRM/bank connectors |
 | Cash application / forecasting | Weak | No remittance matching or predictive forecast |
 | Dispute and promise workflows | Partial | Dispute pause exists; promise-to-pay and structured case resolution do not |
-| Security / tenancy | Incomplete for real customers | Public shared demo is explicitly no-login; request-scoped tenant auth not complete |
+| Security / tenancy | Stronger foundations; unresolved database-owner issue | Private signed sessions, tenant-resolved PostgreSQL and CI isolation tests; public judge tenant remains shared synthetic data; password-reset owner/BYPASSRLS boundary unresolved |
 | Reliability / observability | Moderate prototype | CI and health check exist; production-grade alerting/restore/queue operations not proven |
 | Customer validation / ROI | Not yet evidenced | No measured real-customer pilot |
 
@@ -136,9 +136,9 @@ The earlier Devpost comparison remains relevant: Unstuck is close to the recover
 
 **P0 — protect the product and make the demo trustworthy**
 1. Keep the public judge demo separate from any future private tenant data.
-2. Complete signed-session login/logout, request-scoped tenant context, RLS enforcement and cross-tenant tests before accepting real customer data.
-3. Make webhook event claims and PayPal order-to-tenant routing durable and atomic; test replay, concurrent delivery, unknown order and mismatched invoice.
-4. Re-run the actual Sandbox buyer approval → capture → webhook → audit path on the currently deployed preview. Do not infer it from configuration or unit tests.
+2. Keep signed-session login/logout, request-scoped tenant resolution, PostgreSQL RLS and cross-tenant tests intact. Before accepting real customer data, redesign password-reset table/function ownership so the runtime cannot bypass RLS; validate on a disposable Neon branch.
+3. Preserve durable webhook idempotency and order-to-tenant routing; maintain replay, concurrent-delivery, unknown-order and mismatch tests. Independently verify a real signed Sandbox webhook delivery before claiming live delivery.
+4. The current live ledger shows zero verified captures. If a fresh Sandbox transaction is later explicitly authorised, verify buyer approval → server capture → audit and show the evidence. Do not infer a live capture or webhook from configuration or unit tests.
 
 **P1 — close the highest-value workflow gaps without fake integrations**
 5. Add manually recorded promise-to-pay date, source, and status; automatically pause routine reminders until the promised date and flag missed promises for human review.
