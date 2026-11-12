@@ -29,7 +29,7 @@ The official PayPal AI Hackathon video limit is less than three minutes. Use [FI
 4. Open a disputed invoice and verify that reminder and checkout actions are blocked.
 5. Open the invoice strategist and compare verified facts, rule conclusions, uncertainty, recommendation, and optional Gemini interpretation.
 6. Open Command Centre and show the 22 deterministic Safety Lab checks. Confirm the live 22/22 result and explain that these are policy regression checks, not a penetration test.
-7. Run **Portfolio Autopilot Sweep** only when ready to change shared synthetic data. Inspect the exact proposals in Approvals. Approval is required before an action executes.
+7. The public judge session is read-only. Inspect the existing proposals in Approvals. Use a signed-in private workspace for a fresh sweep or any action that changes data.
 8. Review the Recovery metrics card. **Paid via PayPal Sandbox** counts only records marked with a server-verified Sandbox capture. **Operator-confirmed reminders** counts the operator's recorded confirmation; it does not verify email delivery.
 9. Open Activity and export the audit log if needed.
 
