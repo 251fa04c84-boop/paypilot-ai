@@ -35,7 +35,7 @@ $role$;
 DO $membership$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'paypilot_app') THEN
-    EXECUTE 'GRANT paypilot_reset_executor TO paypilot_app';
+    EXECUTE 'GRANT paypilot_reset_executor TO paypilot_app WITH INHERIT FALSE, SET FALSE';
   END IF;
 END
 $membership$;
@@ -250,16 +250,21 @@ GRANT EXECUTE ON FUNCTION public.paypilot_create_password_reset(TEXT, TEXT, TIME
 GRANT EXECUTE ON FUNCTION public.paypilot_complete_password_reset(TEXT, TEXT, TIMESTAMPTZ) TO paypilot_account_provisioner;
 GRANT EXECUTE ON FUNCTION public.paypilot_invalidate_password_reset(TEXT) TO paypilot_account_provisioner;
 
--- Ownership transfer is complete; the helper role must not create arbitrary
--- objects in public and the application login must not be able to SET ROLE to it.
-REVOKE CREATE ON SCHEMA public FROM paypilot_reset_executor;
-DO $membership_revoke$
+-- paypilot_app retains only a non-inheriting, non-SET membership so it can
+-- transfer ownership during this migration. It cannot inherit reset-table
+-- privileges or SET ROLE to the NOLOGIN executor. Runtime roles are not members.
+DO $membership_assert$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'paypilot_app')
-     AND pg_catalog.pg_has_role('paypilot_app', 'paypilot_reset_executor', 'MEMBER') THEN
-    EXECUTE 'REVOKE paypilot_reset_executor FROM paypilot_app';
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_auth_members m
+    JOIN pg_catalog.pg_roles r ON r.oid = m.member
+    WHERE m.roleid = 'paypilot_reset_executor'::regrole
+      AND r.rolname = 'paypilot_app'
+      AND (m.admin_option OR m.inherit_option OR m.set_option)
+  ) THEN
+    RAISE EXCEPTION 'paypilot_app reset-owner membership must not inherit, SET ROLE, or grant membership';
   END IF;
 END
-$membership_revoke$;
+$membership_assert$;
 
 COMMIT;
