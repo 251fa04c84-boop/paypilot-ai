@@ -61,7 +61,7 @@ PayPilot is designed for small service businesses, freelancers and boutique agen
 
 Recent U.S. research illustrates the problem: Intuit QuickBooks' 2026 report says 59% of surveyed businesses had invoices overdue by 30+ days and businesses with unpaid invoices were owed $17,700 on average ([QuickBooks](https://quickbooks.intuit.com/r/small-business-data/small-business-late-payments-report-2026/)). Bluevine's February 2026 survey of 1,052 U.S. small-business owners found 29% delayed their own pay because customers paid late and 17% missed or nearly missed payroll ([Bluevine](https://www.bluevine.com/newsroom/late-payment-gap-survey-press-release)). These are U.S. survey findings, not global estimates.
 
-**Impact honesty:** these statistics establish the problem, not PayPilot's effectiveness. Our demo proves a controlled workflow and a PayPal Sandbox capture; it does not prove improved recovery rates, faster payment or hours saved. See [`docs/IMPACT_MODEL.md`](docs/IMPACT_MODEL.md) for the measurement plan and pilot metrics.
+**Impact honesty:** these statistics establish the problem, not PayPilot's effectiveness. The current live staging snapshot shows **zero PayPal-verified captures** and the Acme Studio invoice remains open. The application implements server-side PayPal Sandbox capture verification and the Safety Lab tests its evidence rules, but those tests are not a live capture. We do not claim improved recovery rates, faster payment or hours saved. See [`docs/IMPACT_MODEL.md`](docs/IMPACT_MODEL.md) for the measurement plan and pilot metrics.
 
 ## Why this is an agent, not just a chatbot
 
@@ -113,7 +113,7 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 | Portfolio sweep browser check | One live sweep successfully staged a pending reminder-draft proposal for Greenleaf Co; no approval, execution or payment was performed. |
 | PostgreSQL persistence and tenant isolation | GitHub Actions PostgreSQL integration workflow run `43035812286` completed successfully, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration. |
 | Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
-| PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. A previous end-to-end Sandbox checkout was reported by the maintainer; no new payment was initiated during this staging verification. |
+| PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. The current staging ledger shows zero verified PayPal captures; a prior operator-reported test is not represented in the current live invoice state. No new payment was initiated during this verification. |
 | PayPal webhook configuration and delivery | Health/Trust Centre report the Sandbox webhook ID is configured. **Live webhook delivery is not independently verified.** A previous read-only Sandbox lookup returned 404 for the target event and zero listed events; automated tests use a mocked verifier. |
 | Password-reset email configuration and delivery | Health reports Brevo configured on 12 November 2026. One password-reset request returned the generic accepted response. **Inbox delivery is not independently verified**, and the generic response does not prove that the address belongs to an account or that an email arrived. |
 
@@ -133,7 +133,7 @@ The public demo is restricted and uses shared demo data. Judges should not enter
 
 1. **Portfolio Autopilot Sweep:** evaluate the invoice portfolio and queue proposals for human review.
 2. **AI Recovery Assistant:** ask about receivables, overdue risk and disputed accounts; deterministic tools provide the underlying data.
-3. **Overdue invoice:** request approval for a reminder draft, approve it, confirm that you sent it, then create a Sandbox checkout and complete a Sandbox buyer payment.
+3. **Overdue invoice:** use the read-only recovery simulator to preview a reminder and checkout. Inspect the stale Sandbox order warning and explain that an order is not a payment. The current staging ledger has zero verified captures; do not claim a successful payment in the video.
 4. **Disputed invoice:** open Harbor Dental; the agent recommends human review and blocks collection.
 5. **Already paid:** open Lumen Books or revisit a paid invoice; another reminder/checkout is blocked and payment evidence is shown.
 6. **Webhook demonstration:** the demo-only simulated webhook path is available for demo invoices. Real webhook handling is a separate signed endpoint.
