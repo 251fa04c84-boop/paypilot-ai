@@ -49,7 +49,7 @@ The official PayPal AI Hackathon video limit is less than three minutes. Use [FI
 - Gemini provides optional explanation and draft wording; deterministic application rules remain authoritative.
 - Automated tests mock external PayPal and Gemini calls. Passing tests do not prove live webhook delivery.
 - The current staging snapshot has zero PayPal-verified captures. Acme Studio D-1001 is still open, and the linked Sandbox order is stale. Do not present it as paid or click its old historical approval link.
-- Staging health returned HTTP 200 on 12 November 2026 and reports Brevo configured. A generic password-reset request was accepted, but inbox delivery is not independently verified. The Sandbox webhook ID is configured, but live webhook delivery to staging has not been independently verified.
+- Staging health returned HTTP 200 on 12 November 2026 and reports Brevo configured; no test email has been sent and inbox delivery is not independently verified. A PayPal mock simulator event reached the actual staging webhook callback and its signature verified, but a real buyer-approved transaction webhook remains unverified.
 - This is a hackathon demonstration, not production accounting software. Do not claim improved recovery rates, faster payments, hours saved, or real customer outcomes without a measured pilot.
 
 
