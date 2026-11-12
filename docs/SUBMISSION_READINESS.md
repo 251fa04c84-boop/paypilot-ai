@@ -1,6 +1,6 @@
 # PayPilot AI — Submission Readiness
 
-Last verified: 12 November 2026, 05:30 UTC (live staging API + browser smoke test + Node 22 CI)
+Last verified: 12 November 2026, 06:06 UTC (live staging API, browser walkthrough, PayPal simulator signature and CI)
 
 ## Judge links
 
@@ -14,7 +14,7 @@ Last verified: 12 November 2026, 05:30 UTC (live staging API + browser smoke tes
 
 - Render service: `paypilot-ai-pg-staging` (Singapore, free tier).
 - Configured branch: `codex/paypilot-real-postgres-staging`.
-- Latest live deployment: `dep-dbqktgqfngtc73fu21c0`, commit `e2dbaefb7f993c8edaefd091d9291b6b07f2a5d9`.
+- Latest live deployment: `dep-dbqle2bbc2fs73do0feg`, commit `f7cb136306ddf7234fcc51d065efa7692d7a79f3`.
 - Build succeeded and Node 22 started successfully.
 - The visible shared-demo disclosure banner is present in the deployed browser UI.
 - Staging `APP_BASE_URL` has been explicitly set to `https://paypilot-ai-pg-staging.onrender.com`, so newly generated payment/reminder links use the staging origin. Historical proposals already stored with the previous preview URL were not edited. A new proposal was not generated just to test the link, because that would mutate shared demo data.
@@ -22,7 +22,7 @@ Last verified: 12 November 2026, 05:30 UTC (live staging API + browser smoke tes
 - PayPal simulator verification timestamp: `2026-11-12T06:03:40.832Z`. The mock event is not a real capture and is not treated as one.
 - The latest deployment includes the assistant-routing fix: generic cash-flow advice now reaches optional Gemini rather than being misclassified as a deterministic portfolio-summary request.
 
-## Live judge walkthrough — 05:26 UTC
+## Live judge walkthrough — 06:06 UTC
 
 A real browser smoke test loaded the public app and navigated Overview, Command Centre and Trust Centre. It did not sign in, submit forms, click action/approval/payment/reminder/seed/reset controls, or change data.
 
@@ -30,7 +30,7 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 - Overview: 7 open invoices, 7 overdue invoices, 0 awaiting review, 1 paused dispute.
 - Financial snapshot: USD 6,440 outstanding/overdue; USD 1,200 in the 30+ days at-risk bucket; USD 950 disputed; USD 0 PayPal-verified captures; 2 operator-confirmed reminders.
 - Command Centre: 22/22 deterministic Safety Lab checks passed; the page states no AI calls, no provider calls and no mutations.
-- Trust Centre: tenant-scoped PostgreSQL, signed private sessions, human approval, server-side capture verification, webhook signature verification and audit log are configured.
+- Trust Centre: tenant-scoped PostgreSQL, signed private sessions, human approval, server-side capture verification and audit log are configured. PayPal mock simulator signature is verified; real transaction webhook delivery and email inbox delivery remain unverified. Public demo mutations are disabled.
 - Trust caveats are visible: real PayPal webhook delivery and email inbox delivery are not independently verified. Public shared-demo mutations are disabled; judges can inspect synthetic data without changing it.
 - API smoke checks for health, invoices, recovery queue, summary, risk, Safety Lab, read-only simulation, Trust Centre, activity and proposals completed without errors. These were GET/read-only requests.
 - GitHub Actions run `43165278581` passed: Node 22 syntax checks succeeded; the complete test suite reported 211 tests, 210 passed, 0 failed and 1 skipped. PostgreSQL integration run `43165285104` also passed, including the complete password-reset least-privilege migration and function tests.
@@ -58,16 +58,16 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 
 | Area | Evidence/status |
 |---|---|
-| Staging deployment | Latest Render deployment live on commit `f996742`; build succeeded |
-| Browser experience | Shared-data warning visible; Overview, Command Centre and Trust Centre navigated successfully |
+| Staging deployment | Latest Render deployment live on commit `f7cb136`; build succeeded |
+| Browser experience | Read-only shared-demo disclosure visible; Overview, Command Centre and Trust Centre navigated successfully |
 | Safety Lab | 22/22 deterministic checks passed live |
 | PostgreSQL and tenant isolation | CI integration passed tenant isolation, concurrent writes and cross-connection persistence |
 | PayPal Sandbox capture | Current live staging snapshot shows zero verified captures and Acme Studio D-1001 remains open. A prior operator-reported test is not reflected in the current staging ledger; no new payment was initiated during this audit |
-| PayPal webhook | Signature/replay logic tested and webhook ID configured; live delivery not independently verified |
-| Password-reset email | Brevo configured; inbox delivery not independently verified |
-| Password-reset table least privilege | Source/CI migration exists but is unsafe for the observed live owner role and remains unapplied |
+| PayPal webhook | PayPal mock simulator event reached the actual staging callback and its signature verified. Real buyer-approved transaction webhook remains unverified |
+| Password-reset email | Brevo sender is active and the app reports configured; no test email has been sent and inbox delivery is not verified |
+| Password-reset table least privilege | New restricted-owner migration is prepared and CI-tested; it has not yet been applied to live staging |
 | New payment/reminder link origin | `APP_BASE_URL` set to staging; no new proposal was generated to avoid shared-demo mutation |
-| Production | Separate production service was not accessed or modified |
+| Public judge mutations | Disabled on staging; the shared public tenant is read-only |\n| Production | Separate production service was not accessed or modified |
 
 ## Submission checklist
 
