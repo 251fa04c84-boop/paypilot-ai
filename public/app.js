@@ -724,7 +724,8 @@ async function viewTrustCentre() {
     ['Human approval gate', c.humanApproval],
     ['Server-side capture verification', c.serverSideCaptureVerification],
     ['PayPal webhook ID configured', c.webhookConfigured],
-    ['PayPal webhook delivery independently verified', c.webhookDeliveryVerified, 'Verified', 'Not independently verified'],
+    ['PayPal simulator event signature verified', c.webhookSimulatorVerified, 'Mock event verified', 'Not yet verified'],
+    ['Real PayPal webhook delivery independently verified', c.webhookDeliveryVerified, 'Verified', 'Not independently verified'],
     ['Audit log', c.auditLog],
     ['Optional AI configured', c.aiConfigured],
     ['Email provider configured', c.emailConfigured],
@@ -732,7 +733,7 @@ async function viewTrustCentre() {
     ['Public demo mutations', c.publicDemoMutations, 'Enabled — shared demo data', 'Disabled', 'warn'],
   ];
   main.replaceChildren(h('h2', {}, 'Trust centre'),
-    h('p', { class: 'muted' }, 'A transparent control inventory. Configured credentials, verified provider delivery and shared-demo exposure are shown separately. This endpoint never returns credentials, tokens or secret values.'),
+    h('p', { class: 'muted' }, 'A transparent control inventory. Configured credentials, mock simulator delivery, real provider delivery and shared-demo exposure are shown separately. A simulator event never settles an invoice. This endpoint never returns credentials, tokens or secret values.'),
     h('section', { class: 'card glow' }, h('strong', {}, 'Environment'), h('p', {}, trust.environment), h('p', { class: 'muted small' }, trust.storage)),
     h('section', { class: 'card' }, h('strong', {}, 'Security and integration controls'),
       ...rows.map(([label, value, yes = 'Configured', no = 'Not configured', tone]) => h('div', { class: 'sep row' }, h('span', {}, label), pill(tone || (value === true ? 'ok' : value === false ? 'warn' : 'none'), typeof value === 'boolean' ? (value ? yes : no) : value)))),
