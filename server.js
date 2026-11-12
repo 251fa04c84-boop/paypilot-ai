@@ -17,6 +17,7 @@ const { summarize } = require('./lib/summary');
 const { reconcile } = require('./lib/reconciliation');
 const { assessPortfolioRisk } = require('./lib/risk-intelligence');
 const { detectPaymentAnomalies, simulateRecovery } = require('./lib/ops-intelligence');
+const { buildTrustStatus } = require('./lib/trust-status');
 const { createLimiter } = require('./lib/ratelimit');
 const { createPostgresRepository, createPgPool } = require('./lib/postgres-repository');
 const { createPostgresStore } = require('./lib/postgres-store');
@@ -396,18 +397,19 @@ function createApp(opts = {}) {
     const row = risk.items.find((i) => i.invoiceId === invoice.id);
     return { json: simulateRecovery({ invoice, action: query.action, today: todayStr(), riskSignals: row ? row.signals : [], orders: db.orders }) };
   });
-  route('GET', '/api/trust', () => ({
-    json: {
+  route('GET', '/api/trust', () => {
+    const trust = buildTrustStatus({
+      pgMode,
+      authEnabled,
+      webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
+      aiConfigured: Boolean(aiKey),
+      emailConfigured: Boolean(emailProvider.configured),
+      publicDemoMutationsEnabled,
+    });
+    return { json: {
       environment: 'PayPal Sandbox only',
       storage: pgMode ? 'PostgreSQL tenant-scoped' : 'JSON file — not durable on free hosting',
-      controls: {
-        humanApproval: true, approvalTtlMinutes: APPROVAL_TTL_MS / 60000,
-        serverSideCaptureVerification: true, signedWebhookVerification: Boolean(env.PAYPAL_WEBHOOK_ID),
-        webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID), tenantScopedStorage: Boolean(pgMode),
-        signedSessions: Boolean(authEnabled), auditLog: true,
-        aiOptional: true, aiConfigured: Boolean(aiKey), emailConfigured: Boolean(emailProvider.configured),
-        publicDemoMutations: Boolean(publicDemoMutationsEnabled),
-      },
+      controls: trust.controls,
       boundaries: [
         'AI output cannot set invoice status or bypass approval.',
         'Payment settlement requires server-side PayPal capture verification or a verified signed webhook.',
@@ -416,14 +418,9 @@ function createApp(opts = {}) {
         'Recovery simulation never creates orders, approvals, proposals or audit events.',
         'Credentials and secret values are never returned by this endpoint.',
       ],
-      caveats: [
-        ...(pgMode ? [] : ['PostgreSQL tenant-scoped storage is not active in this environment.']),
-        ...(!env.PAYPAL_WEBHOOK_ID ? ['PayPal webhook ID is not configured.'] : []),
-        ...(!emailProvider.configured ? ['Transactional email provider is not configured.'] : []),
-        ...(!authEnabled ? ['Private signed-session accounts are not enabled.'] : []),
-      ],
-    },
-  }));
+      caveats: trust.caveats,
+    } };
+  });
   route('POST', '/api/reconciliation/preview', ({ body }) => {
     if (typeof body.csv !== 'string') throw new HttpError(400, 'Provide CSV text in the csv field.');
     try { return { json: { mode: 'preview_only', results: reconcile(body.csv, db.invoices) } }; }
