@@ -13,7 +13,7 @@ function fakePayPal(script = {}) {
       calls.capture++;
       if (script.notApproved) { const e = new Error('The buyer has not approved this order in PayPal yet.'); e.code = 'NOT_APPROVED'; throw e; }
       const inv = script.invoice();
-      return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [Object.assign({ id: 'CAP-' + id, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }, script.cap || {})] } }] };
+      return { id, status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [Object.assign({ id: 'CAP-' + id, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }, script.cap || {})] } }] };
     },
   };
 }
@@ -153,7 +153,7 @@ test('PayPal: success path verifies server-side, and repeated capture does not c
 
 test('PayPal: capture calls PayPal exactly once even when asked repeatedly', async () => {
   const pp = fakePayPal({ invoice: () => null });
-  const t = await boot({ paypal: Object.assign(pp, { captureOrder: async (id) => { pp.calls.capture++; const inv = t.app.db.invoices[0]; return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'C', status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; } }) });
+  const t = await boot({ paypal: Object.assign(pp, { captureOrder: async (id) => { pp.calls.capture++; const inv = t.app.db.invoices[0]; return { id, status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'C', status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; } }) });
   try {
     const id = (await t.call('POST', '/api/invoices', NEW)).json.id; await t.call('POST', `/api/invoices/${id}/pay`);
     const orderId = t.app.db.orders[0].orderId;
