@@ -15,10 +15,17 @@ ALTER TABLE public.paypilot_users
 
 DO $role$
 BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles
+    WHERE rolname = 'paypilot_reset_executor' AND rolsuper
+  ) THEN
+    RAISE EXCEPTION 'paypilot_reset_executor must never be a superuser; review the existing role before migration';
+  END IF;
+
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'paypilot_reset_executor') THEN
-    EXECUTE 'CREATE ROLE paypilot_reset_executor NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT BYPASSRLS';
+    EXECUTE 'CREATE ROLE paypilot_reset_executor NOLOGIN NOCREATEDB NOCREATEROLE NOINHERIT BYPASSRLS';
   ELSE
-    EXECUTE 'ALTER ROLE paypilot_reset_executor NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT BYPASSRLS';
+    EXECUTE 'ALTER ROLE paypilot_reset_executor NOLOGIN NOCREATEDB NOCREATEROLE NOINHERIT BYPASSRLS';
   END IF;
 END
 $role$;
