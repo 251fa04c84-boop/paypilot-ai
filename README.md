@@ -127,7 +127,7 @@ The manual Sandbox check is an operator-reported test, not a guarantee of produc
 4. For checkout, use a PayPal Sandbox buyer account—not a personal/live PayPal account. Do not use real payment credentials.
 5. Inspect the invoice timeline and Activity tab to see the audit trail.
 
-The public demo is restricted and uses shared demo data. Judges should not enter personal, confidential or real customer information.
+The public judge demo uses shared synthetic data in read-only mode. Public state-changing actions are disabled. Judges should not enter personal, confidential or real customer information.
 
 ## Demo scenarios
 
