@@ -30,19 +30,18 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 - Financial snapshot: USD 6,440 outstanding/overdue; USD 1,200 in the 30+ days at-risk bucket; USD 950 disputed; USD 0 PayPal-verified captures; 2 operator-confirmed reminders.
 - Command Centre: 22/22 deterministic Safety Lab checks passed; the page states no AI calls, no provider calls and no mutations.
 - Trust Centre: tenant-scoped PostgreSQL, signed private sessions, human approval, server-side capture verification, webhook signature verification and audit log are configured.
-- Trust caveats are visible: live PayPal webhook delivery and email inbox delivery are not independently verified; public demo actions can change shared synthetic records.
+- Trust caveats are visible: real PayPal webhook delivery and email inbox delivery are not independently verified. Public shared-demo mutations are disabled; judges can inspect synthetic data without changing it.
 - API smoke checks for health, invoices, recovery queue, summary, risk, Safety Lab, read-only simulation, Trust Centre, activity and proposals completed without errors. These were GET/read-only requests.
 - GitHub Actions run `43161631742` passed on the latest code commit: Node 22 syntax checks succeeded; the complete test suite reported 202 tests, 201 passed, 0 failed and 1 skipped. Both new assistant-routing regression tests passed.
 
-## Security migration — intentionally not applied
+## Password-reset least-privilege fix — prepared, not yet applied
 
-PR #56 added `db/migrations/20261112_password_reset_least_privilege.sql` and disposable-CI checks. The source change is merged, but the migration has **not** been applied to the live Neon staging database.
-
-Read-only inspection found that `paypilot_app` owns the password-reset tables/functions and is also the database owner with `BYPASSRLS`. Ordinary grant revocation and forced RLS do not constrain a BYPASSRLS owner. Do not apply the merged migration as-is. A safe redesign must transfer ownership to a dedicated restricted function-owner role, constrain runtime access, and be validated on a disposable Neon branch first.
-
-## Current payment-evidence snapshot
-
-The live staging portfolio currently shows 7 open invoices, USD 6,440 outstanding/overdue, USD 950 disputed, and **USD 0 / 0 PayPal-verified captures**. Acme Studio D-1001 remains open and has a stale Sandbox order that requires provider-state review. Do not describe the current demo as having completed a live Sandbox capture. The Safety Lab's capture checks use deterministic fixtures and do not call PayPal.
+- Read-only `pg_stat_activity` inspection confirmed the deployed Render app uses `paypilot_staging_runtime` and `paypilot_account_provisioner`; both are non-`BYPASSRLS` roles. The `paypilot_app` role is the Neon administration connection, not the observed Render runtime.
+- The currently deployed password-reset SECURITY DEFINER functions are still owned by `paypilot_app`, so the reset path retains an unnecessarily broad function-owner boundary until the new migration is applied.
+- New migration: `db/migrations/20261112_password_reset_executor.sql`. It creates a `NOLOGIN`, non-superuser `paypilot_reset_executor` role with narrowly scoped `BYPASSRLS`, transfers only the reset tables/functions, limits its column grants, pins `search_path` to `pg_catalog, pg_temp`, denies direct table access with forced RLS, and grants function execution only to `paypilot_account_provisioner`.
+- The migration also fixes the live schema mismatch: reset completion must update `password_updated_at`, not the stale `updated_at` name.
+- The migration and reset flow are covered by the disposable PostgreSQL integration workflow. A separate disposable Neon branch confirmed the role/table/function ownership transfer and the reset-token creation path.
+- The migration has **not** been applied to the live staging database. Apply it only after explicit confirmation of this exact staging change. The older `20261112_password_reset_least_privilege.sql` is marked superseded and intentionally performs no SQL.
 
 ## What PayPilot demonstrates
 
