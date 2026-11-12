@@ -5,10 +5,17 @@ const { createStore } = require('../lib/store');
 const { createApp } = require('../server');
 
 function fakePayPal(script = {}) {
-  let n = 0; const calls = { create: 0, capture: 0 };
+  let n = 0; const calls = { create: 0, getOrder: 0, capture: 0 };
   return {
     calls, configured: () => script.configured !== false,
     createOrder: async ({ invoice }) => { calls.create++; const id = `ORDER${++n}`; return { id, approveUrl: `https://sandbox.paypal.test/approve/${id}`, invoice }; },
+    getOrder: async (id) => {
+      calls.getOrder++;
+      const inv = script.invoice();
+      if (typeof script.orderResponse === 'function') return script.orderResponse(id, inv);
+      if (script.orderResponse) return script.orderResponse;
+      return { id, intent: 'CAPTURE', status: script.orderStatus || 'APPROVED', purchase_units: [{ reference_id: inv.id, amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) } }] };
+    },
     captureOrder: async (id) => {
       calls.capture++;
       if (script.notApproved) { const e = new Error('The buyer has not approved this order in PayPal yet.'); e.code = 'NOT_APPROVED'; throw e; }
