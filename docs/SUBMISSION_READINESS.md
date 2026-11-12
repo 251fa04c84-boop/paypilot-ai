@@ -1,6 +1,6 @@
 # PayPilot AI — Submission Readiness
 
-Last verified: 12 November 2026, 05:27 UTC (live staging API + browser smoke test)
+Last verified: 12 November 2026, 05:30 UTC (live staging API + browser smoke test + Node 22 CI)
 
 ## Judge links
 
@@ -14,11 +14,12 @@ Last verified: 12 November 2026, 05:27 UTC (live staging API + browser smoke tes
 
 - Render service: `paypilot-ai-pg-staging` (Singapore, free tier).
 - Configured branch: `codex/paypilot-real-postgres-staging`.
-- Latest live deployment: `dep-dbqkras9v7es73ctidrg`, commit `f996742252c22026c6f5155a4bf62af3718dc4a2`.
+- Latest live deployment: `dep-dbqktgqfngtc73fu21c0`, commit `e2dbaefb7f993c8edaefd091d9291b6b07f2a5d9`.
 - Build succeeded and Node 22 started successfully.
 - The visible shared-demo disclosure banner is present in the deployed browser UI.
 - Staging `APP_BASE_URL` has been explicitly set to `https://paypilot-ai-pg-staging.onrender.com`, so newly generated payment/reminder links use the staging origin. Historical proposals already stored with the previous preview URL were not edited. A new proposal was not generated just to test the link, because that would mutate shared demo data.
 - The free-tier service may return a temporary 503 while waking. A retry succeeded; this audit did not find evidence of a persistent crash.
+- The latest deployment includes the assistant-routing fix: generic cash-flow advice now reaches optional Gemini rather than being misclassified as a deterministic portfolio-summary request.
 
 ## Live judge walkthrough — 05:26 UTC
 
@@ -31,6 +32,7 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 - Trust Centre: tenant-scoped PostgreSQL, signed private sessions, human approval, server-side capture verification, webhook signature verification and audit log are configured.
 - Trust caveats are visible: live PayPal webhook delivery and email inbox delivery are not independently verified; public demo actions can change shared synthetic records.
 - API smoke checks for health, invoices, recovery queue, summary, risk, Safety Lab, read-only simulation, Trust Centre, activity and proposals completed without errors. These were GET/read-only requests.
+- GitHub Actions run `43161631742` passed on the latest code commit: Node 22 syntax checks succeeded; the complete test suite reported 202 tests, 201 passed, 0 failed and 1 skipped. Both new assistant-routing regression tests passed.
 
 ## Security migration — intentionally not applied
 
