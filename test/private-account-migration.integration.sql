@@ -96,9 +96,9 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_auth_members m
     WHERE m.roleid = 'paypilot_reset_executor'::regrole
       AND m.member = 'paypilot_app'::regrole
-      AND (m.admin_option OR m.inherit_option OR m.set_option)
+      AND (m.inherit_option OR m.set_option)
   ) THEN
-    RAISE EXCEPTION 'administration role must not inherit, SET ROLE, or grant membership to the reset executor';
+    RAISE EXCEPTION 'administration role must not inherit reset privileges or SET ROLE to the reset executor';
   END IF;
 
   SELECT c.relrowsecurity, c.relforcerowsecurity
