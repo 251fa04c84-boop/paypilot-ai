@@ -23,7 +23,7 @@
 - Use a clear, measured male English voice. Keep narration intelligible above music; duck the music under speech.
 - Burn in accurate English captions, with no more than two lines at once.
 - Use restrained chapter transitions and subtle UI sound effects only between sections. Avoid loud impacts, fast zooms and constant motion.
-- Confirm `/api/safety-lab` still returns 22/22 immediately before recording; show the live 22/22 output and its disclaimer.
+- Only after PR #54 is deployed, confirm `/api/safety-lab` returns 22/22 immediately before recording; show the live 22/22 output and its disclaimer.
 - For the PayPal capture segment, show a previously completed and verified Sandbox capture or omit the segment. Never stage a fake paid result.
 - Keep the final export under 2:55, upload publicly to YouTube, and verify playback and captions before submitting.
 - Do not show secrets, credentials, buyer account details, or private customer data.
