@@ -32,6 +32,7 @@ test('real PostgreSQL HTTP routes isolate tenants, serialize captures, dedupe we
   const completedOrder = (orderId) => {
     const privateOrder = orderId === 'ORDER-PRIVATE-TEST-01';
     return {
+      id: orderId,
       status: 'COMPLETED',
       purchase_units: [{
         reference_id: privateOrder ? 'invoice-private' : 'invoice-a',
