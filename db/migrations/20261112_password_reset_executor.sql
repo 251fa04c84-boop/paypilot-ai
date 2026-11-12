@@ -60,7 +60,8 @@ DECLARE
   target_email TEXT;
 BEGIN
   IF p_email_normalized IS NULL OR pg_catalog.btrim(p_email_normalized) = ''
-     OR p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}
+     OR p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}$'
+     OR p_expires_at IS NULL OR p_expires_at <= pg_catalog.now()
      OR p_expires_at > pg_catalog.now() + interval '31 minutes' THEN
     RAISE EXCEPTION 'Invalid password reset request';
   END IF;
@@ -100,7 +101,9 @@ AS $function$
 DECLARE
   target_user_id UUID;
 BEGIN
-  IF p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}
+  IF p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}$'
+     OR p_password_hash IS NULL
+     OR pg_catalog.length(p_password_hash) < 40
      OR pg_catalog.length(p_password_hash) > 300 THEN
     RETURN FALSE;
   END IF;
@@ -140,7 +143,7 @@ SET search_path = pg_catalog, pg_temp
 SET row_security = off
 AS $function$
 BEGIN
-  IF p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}
+  IF p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}$' THEN
     RETURN FALSE;
   END IF;
 
