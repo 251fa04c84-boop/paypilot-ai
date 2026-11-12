@@ -40,6 +40,6 @@ test('public shared judge demo rejects state-changing actions while health and t
     assert.equal(trust.json.controls.publicDemoMutations, false);
     const mutation = await t.call('POST', '/api/assistant/chat', { message: 'draft a reminder' });
     assert.equal(mutation.status, 403);
-    assert.match(mutation.json.error, /read-only/i);
+    assert.match(mutation.json.error, /disabled on this deployment/i);
   } finally { t.close(); }
 });
