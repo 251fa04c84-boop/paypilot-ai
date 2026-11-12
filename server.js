@@ -18,6 +18,7 @@ const { reconcile } = require('./lib/reconciliation');
 const { assessPortfolioRisk } = require('./lib/risk-intelligence');
 const { detectPaymentAnomalies, simulateRecovery } = require('./lib/ops-intelligence');
 const { buildTrustStatus } = require('./lib/trust-status');
+const { runSafetyLab } = require('./lib/safety-lab');
 const { createLimiter } = require('./lib/ratelimit');
 const { createPostgresRepository, createPgPool } = require('./lib/postgres-repository');
 const { createPostgresStore } = require('./lib/postgres-store');
@@ -390,6 +391,7 @@ function createApp(opts = {}) {
     const anomalies = detectPaymentAnomalies(db.invoices, db.orders, Date.parse(iso()));
     return { json: { generatedAt: iso(), risk, anomalies, mode: 'read_only_deterministic' } };
   });
+  route('GET', '/api/safety-lab', () => ({ json: runSafetyLab(Date.parse(iso())) }));
   route('GET', '/api/recovery/simulate', ({ query }) => {
     const invoice = db.invoices.find((i) => i.id === query.invoiceId);
     if (!invoice) throw new HttpError(404, 'Invoice not found in this workspace.');
