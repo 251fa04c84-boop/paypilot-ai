@@ -96,9 +96,9 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_auth_members m
     WHERE m.roleid = 'paypilot_reset_executor'::regrole
       AND m.member = 'paypilot_app'::regrole
-      AND (m.admin_option OR m.inherit_option OR NOT m.set_option)
+      AND (m.inherit_option OR NOT m.set_option)
   ) THEN
-    RAISE EXCEPTION 'administration role membership must be non-inheriting, non-admin, and SET-capable';
+    RAISE EXCEPTION 'administration role membership must be non-inheriting and SET-capable';
   END IF;
 
   SELECT c.relrowsecurity, c.relforcerowsecurity
