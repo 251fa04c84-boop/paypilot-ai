@@ -4,7 +4,7 @@
 **Source repository:** https://github.com/251fa04c84-boop/paypilot-ai  
 **Staging implementation PR:** https://github.com/251fa04c84-boop/paypilot-ai/pull/28
 
-The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. Public judge workflow actions are enabled for the walkthrough and can change shared demo records; public reset and demo-admin controls are disabled. Do not enter personal, confidential or real customer data. The separate original production service was not modified.
+The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. The public judge demo is now read-only: visitors can inspect synthetic records, but public actions cannot change the shared state. Use a private signed-in workspace for interactive actions. Do not enter personal, confidential or real customer data. The separate original production service was not modified.
 
 ## Under-three-minute judge narrative
 
@@ -18,7 +18,7 @@ The official PayPal AI Hackathon video limit is less than three minutes. Use [FI
 | 0:15–0:35 | Currency-grouped exposure and recovery priority queue | “Every invoice is ranked using a published, deterministic urgency heuristic. Currency amounts are never compared without FX conversion, and the score is not a payment prediction.” |
 | 0:35–0:55 | Open Harbor Dental / disputed invoice | “A disputed invoice is paused for human review. PayPilot blocks collection rather than pressuring a customer over contested work.” |
 | 0:55–1:15 | Open an overdue invoice | “The analysis separates recorded facts, fixed rules, uncertainty and optional Gemini commentary. Gemini explains; it cannot decide eligibility or payment status.” |
-| 1:15–1:40 | Open Approvals and Activity; explain the 30-minute approval gate and snapshot revalidation | “Every consequential action requires approval for the exact invoice and action. The server revalidates the invoice before execution; approvals expire after thirty minutes.” If a fresh pending proposal is needed, a sweep can create one in shared demo data, but it changes the shared state. |
+| 1:15–1:40 | Open Approvals and Activity; explain the 30-minute approval gate and snapshot revalidation | “Every consequential action requires approval for the exact invoice and action. The server revalidates the invoice before execution; approvals expire after thirty minutes.” The public demo is read-only, so use the existing synthetic proposals and activity records. Do not run a portfolio sweep from the public judge session. |
 | 1:40–2:00 | Recovery metrics and Activity audit log | “The outcome ledger separates PayPal-verified Sandbox captures from manual records. Reminder counts mean the operator confirmed sending; they are not email-delivery receipts. Actions are traceable.” |
 
 ## Recommended walkthrough
