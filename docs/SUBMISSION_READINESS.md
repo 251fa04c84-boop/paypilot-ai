@@ -38,6 +38,10 @@ PR #56 added `db/migrations/20261112_password_reset_least_privilege.sql` and dis
 
 Read-only inspection found that `paypilot_app` owns the password-reset tables/functions and is also the database owner with `BYPASSRLS`. Ordinary grant revocation and forced RLS do not constrain a BYPASSRLS owner. Do not apply the merged migration as-is. A safe redesign must transfer ownership to a dedicated restricted function-owner role, constrain runtime access, and be validated on a disposable Neon branch first.
 
+## Current payment-evidence snapshot
+
+The live staging portfolio currently shows 7 open invoices, USD 6,440 outstanding/overdue, USD 950 disputed, and **USD 0 / 0 PayPal-verified captures**. Acme Studio D-1001 remains open and has a stale Sandbox order that requires provider-state review. Do not describe the current demo as having completed a live Sandbox capture. The Safety Lab's capture checks use deterministic fixtures and do not call PayPal.
+
 ## What PayPilot demonstrates
 
 - Portfolio-level receivables prioritisation with explainable deterministic evidence.
@@ -56,7 +60,7 @@ Read-only inspection found that `paypilot_app` owns the password-reset tables/fu
 | Browser experience | Shared-data warning visible; Overview, Command Centre and Trust Centre navigated successfully |
 | Safety Lab | 22/22 deterministic checks passed live |
 | PostgreSQL and tenant isolation | CI integration passed tenant isolation, concurrent writes and cross-connection persistence |
-| PayPal Sandbox capture | Prior operator-reported Sandbox checkout was completed and verified; no new payment was initiated during this audit |
+| PayPal Sandbox capture | Current live staging snapshot shows zero verified captures and Acme Studio D-1001 remains open. A prior operator-reported test is not reflected in the current staging ledger; no new payment was initiated during this audit |
 | PayPal webhook | Signature/replay logic tested and webhook ID configured; live delivery not independently verified |
 | Password-reset email | Brevo configured; inbox delivery not independently verified |
 | Password-reset table least privilege | Source/CI migration exists but is unsafe for the observed live owner role and remains unapplied |
