@@ -1,6 +1,6 @@
 # PayPilot AI — Submission Readiness
 
-Last verified: 12 November 2026, 06:26 UTC (live staging API, least-privilege database roles, 22/22 Safety Lab and CI)
+Last verified: 12 November 2026, 06:26 UTC (live staging API, least-privilege database roles, 22/22 Safety Lab and CI). Later Trust Centre probe changes are source/CI-verified and awaiting Render auto-deploy.
 
 ## Judge links
 
@@ -44,7 +44,7 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 - The live staging database now confirms: `paypilot_reset_executor` cannot log in and is not a superuser; it owns the reset-token table and completion function; RLS is enabled and forced; `paypilot_staging_runtime` cannot read reset tokens or execute reset functions; `paypilot_account_provisioner` cannot read reset tokens but can execute the three reset functions.
 - Render's staging `DATABASE_URL` now uses `paypilot_staging_runtime`; `ACCOUNT_PROVISIONING_DATABASE_URL` uses `paypilot_account_provisioner`. Both credentials are stored as Render secrets and are not committed to Git.
 - The app restarted successfully after the credential switch. Live health reports `ok:true`, PostgreSQL storage and `auth.enabled:true`. The Safety Lab still reports 22/22 passed.
-- A live Trust Centre check now verifies reset-token table permissions, function permissions, ownership and forced RLS rather than relying only on a configuration flag.
+- The staging database permissions, ownership and forced-RLS state were independently verified through read-only Neon queries. The source branch adds a live Trust Centre probe for these controls; that UI/API addition is awaiting the next Render deployment.
 - The broad `paypilot_app` role remains a Neon administration/maintenance identity and must not be used as either Render runtime connection. The deployed Render app now uses the dedicated restricted roles.
 - The migration and reset flow pass disposable PostgreSQL integration tests. No real password reset was initiated and no email was sent.
 
