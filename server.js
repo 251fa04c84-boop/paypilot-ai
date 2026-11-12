@@ -554,7 +554,7 @@ function createApp(opts = {}) {
         settings.webhookSimulatorVerifiedAt = iso();
         settings.webhookSimulatorEventId = eventId;
         settings.webhookSimulatorEventType = event;
-        store.save();
+        await store.save();
         return { json: { received: true, verified: true, simulation: true, eventId, eventType: event } };
       }
     }
@@ -563,7 +563,7 @@ function createApp(opts = {}) {
     settings.webhookDeliveryVerifiedAt = iso();
     settings.webhookLastVerifiedEventId = eventId;
     settings.webhookLastVerifiedEventType = event;
-    store.save();
+    await store.save();
     const cutoff = Date.parse(iso()) - 30 * 86400000;
     db.processedWebhookEvents = db.processedWebhookEvents
       .filter((x) => x && typeof x.id === 'string' && Date.parse(x.at) >= cutoff)
