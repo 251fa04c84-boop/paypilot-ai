@@ -45,3 +45,17 @@ test('reports a verified mock simulator separately from real webhook delivery', 
   assert.equal(result.controls.webhookDeliveryVerified, false);
   assert.ok(result.caveats.some((x) => x.includes('mock event')));
 });
+
+
+test('reports real signed webhook delivery separately from the mock simulator', () => {
+  const result = buildTrustStatus({
+    pgMode: true, authEnabled: true, webhookConfigured: true,
+    aiConfigured: true, emailConfigured: true, publicDemoMutationsEnabled: false,
+    webhookSimulatorVerified: true,
+    webhookDeliveryVerified: true,
+  });
+  assert.equal(result.controls.webhookDeliveryVerified, true);
+  assert.equal(result.controls.webhookSimulatorVerified, true);
+  assert.ok(result.caveats.some((x) => x.includes('real signed PayPal Sandbox webhook reached staging')));
+  assert.ok(!result.caveats.some((x) => x.includes('has not yet been independently verified')));
+});
