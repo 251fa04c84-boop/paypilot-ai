@@ -1063,7 +1063,7 @@ function createApp(opts = {}) {
       throw new Error('The registered PayPal Sandbox webhook is not subscribed to PAYMENT.CAPTURE.COMPLETED.');
     }
     const result = await paypal.simulateWebhookEvent({
-      webhookId: env.PAYPAL_WEBHOOK_ID,
+      url: expectedUrl,
       eventType: 'PAYMENT.CAPTURE.COMPLETED',
     });
     console.log('PayPal Sandbox webhook simulator queued:', result.status);
