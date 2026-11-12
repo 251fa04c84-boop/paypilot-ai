@@ -21,6 +21,12 @@ Last verified: 12 November 2026 (read-only staging health and API inspection)
 - PR #52 CI passed: the Node 22 suite reported 196 tests, 195 passed, zero failed and one skipped; PostgreSQL integration passed tenant isolation, concurrent writes, cross-connection persistence and HTTP route checks.
 - No payment, email send, reset, seed, invoice mutation or production operation was performed during this verification.
 
+## Pending staging update
+
+- PR #54 adds strict PayPal order-ID binding, exactly-one-purchase-unit/capture enforcement, capture-ID validation, and expands the deterministic Safety Lab from 18 to 22 checks.
+- PR #54 is not yet merged or deployed. The currently deployed staging service remains at 18/18 until CI passes, the PR is merged, and a staging-only deployment is verified.
+- Do not claim the 22/22 result in a submission video until the live staging endpoint confirms it.
+
 ## Remaining external verification
 
 1. **PayPal webhook delivery:** webhook ID is configured and signature/replay handling is covered by automated tests. Live delivery to this staging app is not independently verified; a previous read-only lookup found no matching event and zero listed events.
