@@ -259,23 +259,25 @@ GRANT EXECUTE ON FUNCTION public.paypilot_invalidate_password_reset(TEXT) TO pay
 -- retain ADMIN OPTION for its management grant; no Render runtime role is a member.
 DO $membership_assert$
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_catalog.pg_auth_members m
-    JOIN pg_catalog.pg_roles r ON r.oid = m.member
-    WHERE m.roleid = 'paypilot_reset_executor'::regrole
-      AND r.rolname = 'paypilot_app'
-      AND m.inherit_option
-  ) THEN
-    RAISE EXCEPTION 'paypilot_app must not inherit reset-executor privileges';
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_auth_members m
-    JOIN pg_catalog.pg_roles r ON r.oid = m.member
-    WHERE m.roleid = 'paypilot_reset_executor'::regrole
-      AND r.rolname = 'paypilot_app'
-      AND m.set_option
-  ) THEN
-    RAISE EXCEPTION 'paypilot_app needs explicit SET access to transfer reset-object ownership';
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'paypilot_app') THEN
+    IF EXISTS (
+      SELECT 1 FROM pg_catalog.pg_auth_members m
+      JOIN pg_catalog.pg_roles r ON r.oid = m.member
+      WHERE m.roleid = 'paypilot_reset_executor'::regrole
+        AND r.rolname = 'paypilot_app'
+        AND m.inherit_option
+    ) THEN
+      RAISE EXCEPTION 'paypilot_app must not inherit reset-executor privileges';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_auth_members m
+      JOIN pg_catalog.pg_roles r ON r.oid = m.member
+      WHERE m.roleid = 'paypilot_reset_executor'::regrole
+        AND r.rolname = 'paypilot_app'
+        AND m.set_option
+    ) THEN
+      RAISE EXCEPTION 'paypilot_app needs explicit SET access to transfer reset-object ownership';
+    END IF;
   END IF;
 END
 $membership_assert$;
