@@ -35,7 +35,7 @@ $role$;
 DO $membership$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'paypilot_app') THEN
-    EXECUTE 'GRANT paypilot_reset_executor TO paypilot_app WITH ADMIN OPTION, INHERIT FALSE, SET FALSE';
+    EXECUTE 'GRANT paypilot_reset_executor TO paypilot_app';
   END IF;
 END
 $membership$;
@@ -250,9 +250,9 @@ GRANT EXECUTE ON FUNCTION public.paypilot_create_password_reset(TEXT, TEXT, TIME
 GRANT EXECUTE ON FUNCTION public.paypilot_complete_password_reset(TEXT, TEXT, TIMESTAMPTZ) TO paypilot_account_provisioner;
 GRANT EXECUTE ON FUNCTION public.paypilot_invalidate_password_reset(TEXT) TO paypilot_account_provisioner;
 
--- paypilot_app retains an admin-only, non-inheriting, non-SET membership so it can
--- transfer ownership during this migration. It cannot inherit reset-table
--- privileges or SET ROLE to the NOLOGIN executor. Runtime roles are not members.
+-- The Neon administration role may retain a management-granted membership for
+-- ownership transfer, but it must not inherit privileges or SET ROLE to the
+-- NOLOGIN executor. Render runtime/provisioner roles are never members.
 DO $membership_assert$
 BEGIN
   IF EXISTS (
