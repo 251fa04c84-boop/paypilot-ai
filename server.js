@@ -516,6 +516,7 @@ function createApp(opts = {}) {
     const resource = body && body.resource;
     const eventId = body && body.id;
     if (!event || !resource || typeof eventId !== 'string' || !eventId.trim()) throw new HttpError(400, 'Invalid PayPal webhook payload.');
+    console.log('PayPal webhook received:', eventId, event);
     if (!env.PAYPAL_WEBHOOK_ID || !paypal.configured() || typeof paypal.verifyWebhookSignature !== 'function') {
       throw new HttpError(503, 'PayPal webhook verification is not configured. Set PAYPAL_WEBHOOK_ID and valid Sandbox credentials.');
     }
@@ -546,6 +547,7 @@ function createApp(opts = {}) {
         transmissionTime: signature.transmissionTime,
         rawBody: body.__rawBody,
       });
+      console.log('PayPal simulator signature result:', simulatorVerified, eventId);
       if (simulatorVerified) {
         settings.webhookSimulatorVerifiedAt = iso();
         settings.webhookSimulatorEventId = eventId;
@@ -1066,7 +1068,19 @@ function createApp(opts = {}) {
       url: expectedUrl,
       eventType: 'PAYMENT.CAPTURE.COMPLETED',
     });
-    console.log('PayPal Sandbox webhook simulator queued:', result.status);
+    console.log('PayPal Sandbox webhook simulator queued:', result.status, result.data && result.data.id || 'no event id in response');
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const recent = await paypal.listWebhookEvents({
+        startTime: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+        pageSize: 20,
+        eventType: 'PAYMENT.CAPTURE.COMPLETED',
+      });
+      const events = Array.isArray(recent.events) ? recent.events : [];
+      console.log('PayPal recent capture webhook events:', events.slice(0, 5).map((item) => ({ id: item.id, eventType: item.event_type, createTime: item.create_time })));
+    } catch (error) {
+      console.log('PayPal webhook event history check unavailable:', error.message);
+    }
     return result;
   }
 
