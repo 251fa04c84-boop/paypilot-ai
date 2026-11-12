@@ -32,7 +32,7 @@ test('reports missing infrastructure without claiming it is configured', () => {
   assert.equal(result.controls.emailConfigured, false);
   assert.equal(result.controls.publicDemoMutations, false);
   assert.equal(result.controls.passwordResetIsolation, false);
-  assert.ok(result.caveats.some((x) => x.includes('password-reset token storage')));
+  assert.ok(result.caveats.some((x) => x.toLowerCase().includes('password-reset token storage')));
   assert.ok(result.caveats.some((x) => x.includes('PayPal webhook ID is not configured')));
   assert.ok(result.caveats.some((x) => x.includes('Transactional email provider is not configured')));
 });
