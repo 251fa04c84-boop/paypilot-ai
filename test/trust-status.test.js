@@ -1,0 +1,34 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { buildTrustStatus } = require('../lib/trust-status');
+
+test('distinguishes configured integrations from independently verified delivery', () => {
+  const result = buildTrustStatus({
+    pgMode: true, authEnabled: true, webhookConfigured: true,
+    aiConfigured: true, emailConfigured: true, publicDemoMutationsEnabled: true,
+  });
+  assert.equal(result.controls.webhookConfigured, true);
+  assert.equal(result.controls.webhookDeliveryVerified, false);
+  assert.equal(result.controls.emailConfigured, true);
+  assert.equal(result.controls.emailDeliveryVerified, false);
+  assert.equal(result.controls.tenantScopedStorage, true);
+  assert.equal(result.controls.signedSessions, true);
+  assert.ok(result.caveats.some((x) => x.includes('webhook delivery has not been independently verified')));
+  assert.ok(result.caveats.some((x) => x.includes('email delivery has not been independently verified')));
+  assert.ok(result.caveats.some((x) => x.includes('shared synthetic records')));
+});
+
+test('reports missing infrastructure without claiming it is configured', () => {
+  const result = buildTrustStatus({
+    pgMode: false, authEnabled: false, webhookConfigured: false,
+    aiConfigured: false, emailConfigured: false, publicDemoMutationsEnabled: false,
+  });
+  assert.equal(result.controls.tenantScopedStorage, false);
+  assert.equal(result.controls.signedSessions, false);
+  assert.equal(result.controls.webhookConfigured, false);
+  assert.equal(result.controls.emailConfigured, false);
+  assert.equal(result.controls.publicDemoMutations, false);
+  assert.ok(result.caveats.some((x) => x.includes('PayPal webhook ID is not configured')));
+  assert.ok(result.caveats.some((x) => x.includes('Transactional email provider is not configured')));
+});

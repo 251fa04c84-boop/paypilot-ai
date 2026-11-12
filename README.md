@@ -32,7 +32,8 @@ Most invoice tools stop at reminders, and most chat interfaces stop at suggestio
 - **Risk Radar:** deterministic, evidence-linked review signals surface disputes, overdue exposure, duplicate invoice references, repeated contact pressure, amount outliers and multiple active orders. Scores prioritize human review; they are not fraud probabilities.
 - **Payment anomaly monitor:** checks the local order ledger for duplicate provider references, amount/currency mismatches, orphaned orders, stale open orders and multiple active orders. These checks do not assert fraud or replace PayPal's provider state.
 - **Recovery what-if simulator:** previews whether a reminder or Sandbox checkout proposal would pass policy, identifies blockers and shows the approval/verification steps. It never creates a draft, proposal, approval, checkout or audit record.
-- **Command Centre and Trust Centre:** one judge walkthrough surfaces portfolio risk, payment anomalies, safe simulation and the live environment's security/integration configuration without exposing secrets.
+- **Deterministic recovery safety lab:** ten repeatable checks exercise the same policy and ledger functions used by the application: disputed/paid invoice blocks, duplicate checkout, contact pressure, duplicate invoice references, duplicate provider IDs, amount/currency mismatch, orphan orders and stale orders. The lab makes no AI or provider calls and mutates no records; it is a policy regression demonstration, not a penetration test.
+- **Command Centre and Trust Centre:** one judge walkthrough surfaces portfolio risk, payment anomalies, safe simulation, repeatable safety checks and the live environment's security/integration configuration without exposing secrets.
 
 The product's core differentiator is the full chain from portfolio triage to evidence-backed approval to verified payment—not a claim that an LLM autonomously controls money.
 
@@ -107,14 +108,14 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 
 | Check | Evidence/status |
 |---|---|
-| Staging homepage and health endpoint | Browser inspection succeeded; homepage loaded without visible errors and `GET /api/health` returned HTTP 200 on 11 November 2026. |
+| Staging homepage and health endpoint | Read-only browser check returned HTTP 200 on 12 November 2026. Health reports `ok: true`, PostgreSQL tenant-scoped storage, Gemini configured, PayPal Sandbox configured, signed-session auth enabled and Brevo configured. |
 | Gemini assistant read-only browser check | Live staging test returned invoice-specific overdue and dispute evidence and did not create proposals, approvals, payment links or execute actions. |
 | Portfolio sweep browser check | One live sweep successfully staged a pending reminder-draft proposal for Greenleaf Co; no approval, execution or payment was performed. |
 | PostgreSQL persistence and tenant isolation | GitHub Actions PostgreSQL integration workflow run `43035812286` completed successfully, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration. |
 | Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
 | PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. A previous end-to-end Sandbox checkout was reported by the maintainer; no new payment was initiated during this staging verification. |
-| PayPal webhook delivery | **Not currently verified for this staging app.** The latest read-only lookup using its Sandbox credentials returned 404 for the target event and zero listed events. Automated tests use a mocked verifier. |
-| Password-reset email | **Not live on staging.** Brevo/Resend adapters and reset-token flow are implemented, but health reports `email.configured: false` because no provider API key and verified sender are configured. |
+| PayPal webhook configuration and delivery | Health/Trust Centre report the Sandbox webhook ID is configured. **Live webhook delivery is not independently verified.** A previous read-only Sandbox lookup returned 404 for the target event and zero listed events; automated tests use a mocked verifier. |
+| Password-reset email configuration and delivery | Health reports Brevo configured on 12 November 2026. One password-reset request returned the generic accepted response. **Inbox delivery is not independently verified**, and the generic response does not prove that the address belongs to an account or that an email arrived. |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
 
@@ -188,6 +189,9 @@ lib/paypal.js    PayPal Orders v2 and webhook verification client (Sandbox)
 lib/ai.js        Gemini calls, fallback, timeout, backoff and output validation
 lib/store.js     legacy local JSON store; lib/postgres-store.js request-scoped transactional tenant state; lib/postgres-repository.js account/session/reset/order persistence
 lib/summary.js   Multi-currency accounting summaries
+lib/ops-intelligence.js Payment-ledger anomaly checks and read-only recovery simulation
+lib/trust-status.js Explicit configuration vs provider-delivery verification state
+lib/safety-lab.js Deterministic, read-only recovery policy regression checks
 lib/ratelimit.js Sliding-window rate limiters
 ```
 
@@ -203,7 +207,9 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 ## Known limitations
 
 - Public staging judge-demo actions are enabled and operate only on shared synthetic records; the public reset control is disabled. Private account flows are available when the configured database roles and session settings pass health checks.
-- Password-reset email is not enabled on staging until a transactional email provider key and verified sender are configured.
+- Brevo is configured on staging, but password-reset inbox delivery has not been independently verified. A generic accepted response is not proof of delivery.
+- PayPal webhook ID is configured on staging, but live webhook delivery has not been independently verified.
+- Public judge-demo actions can change shared synthetic records; public reset and demo-admin controls are disabled.
 - Rate-limit counters are in memory and are not distributed across instances.
 - Reminder messages are drafts for the operator to send; the app does not send reminder email/SMS.
 - PayPal Sandbox only; no real-money transactions.

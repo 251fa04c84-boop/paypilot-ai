@@ -1,41 +1,41 @@
 # PayPilot AI — Submission Readiness
 
-Last verified: 11 November 2026
+Last verified: 12 November 2026 (read-only staging health and API inspection)
 
 ## Public staging demo
 
 - URL: https://paypilot-ai-pg-staging.onrender.com/
 - Environment: Render free-tier staging service, Singapore region
 - Branch: `codex/paypilot-real-postgres-staging`
-- Deployed commit: `bcc66518afa69979fa308fdd0e85895cd004de7c`
-- Deployment: Render reports the deploy as **live**.
-- Production remains separate and was not changed: https://paypilot-ai-1qw8.onrender.com/
+- Last confirmed deployed visual commit: `f9906653f7bd6690792fff13c99679662311c950`
+- Production remains separate and untouched: https://paypilot-ai-1qw8.onrender.com/
 
-## What was verified
+## What was verified on 12 November
 
-- Public staging homepage loads successfully in a browser; no visible page error.
-- `GET /api/health` returned HTTP 200 with `ok: true`.
-- Health reports PostgreSQL tenant-scoped storage, Gemini configured, PayPal Sandbox configured, and private-account auth enabled.
-- Public judge-demo workflow mutations are enabled on staging only; demo-admin controls remain disabled. The interactive workflow can change shared synthetic demo records, and the public reset control is disabled.
-- The Gemini assistant passed a live read-only browser test: it summarized overdue and disputed demo invoices with evidence and did not create proposals, approvals, payment links, or execute actions.
-- One live portfolio-sweep test succeeded and staged a single pending reminder-draft proposal for Greenleaf Co (demo); no proposal was approved or executed and no payment was created.
-- GitHub Actions PostgreSQL integration workflow run 43035812286 completed successfully. It passed application unit tests, schema/runtime-role setup, RLS policy checks, restricted lookup functions, migrations, private account/session checks, tenant isolation, concurrent writes, cross-connection persistence, HTTP route integration, and cleanup.
-- No production service or production database was modified.
+- `GET /api/health` returned HTTP 200 and `ok: true`.
+- Health reports PostgreSQL tenant-scoped storage, Gemini configured, PayPal Sandbox configured, signed-session auth enabled, and Brevo configured.
+- Public judge-demo mutations are enabled for shared synthetic records. Public reset and demo-admin controls are disabled. Do not enter personal or confidential data.
+- `GET /api/intelligence/overview` returned seven open invoices, five risk-flagged invoices and three ledger consistency anomalies. The anomaly disclaimer correctly says these are not fraud determinations.
+- `GET /api/trust` reports the Sandbox webhook ID and email provider configured. This reports configuration, not successful delivery.
+- The staging app has a previously reported PostgreSQL integration workflow pass on commit `f9906653...`, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration.
+- No payment, email send, reset, seed, invoice mutation or production operation was performed during this verification.
 
 ## Remaining external verification
 
-1. **Password-reset email:** implemented with Brevo and Resend adapters, but no provider is configured on staging. Health currently reports `email.configured: false`. To enable it, configure `BREVO_API_KEY` and a verified `EMAIL_FROM` directly in the Render staging environment. Never commit or paste the API key into chat.
-2. **PayPal webhook delivery:** the webhook endpoint and signature/replay handling are implemented and covered by automated tests. The latest read-only lookup against the staging Sandbox credentials found no record of the previously simulated event (event lookup returned 404; event listing returned zero events). Therefore live delivery to this staging app is **not currently verified**. Do not describe it as verified based only on mocked tests or a queued simulator message.
-3. **Judge interaction:** the staging preview now has the controlled judge-demo workflow enabled. It uses shared synthetic records; judge actions can change those records, and public reset is disabled. No production data is exposed.
+1. **PayPal webhook delivery:** webhook ID is configured and signature/replay handling is covered by automated tests. Live delivery to this staging app is not independently verified; a previous read-only lookup found no matching event and zero listed events.
+2. **Password-reset email:** Brevo is configured on staging. A prior reset request returned a generic accepted response, but that response intentionally does not disclose whether an account exists. Inbox delivery is not independently verified.
+3. **Safety Lab PR:** the new deterministic safety lab and clearer Trust Centre are proposed in PR #50. They are not part of the deployed staging app until CI passes, the PR is merged, and staging is deployed and rechecked.
+4. **Judge interaction:** public judge-demo actions can change shared synthetic records. Public reset and demo-admin controls are disabled.
 
 ## Safe submission claims
 
-PayPilot is an evidence-first receivables recovery demo that uses deterministic invoice rules, optional Gemini explanations, human approval gates, PayPal Sandbox payment verification, tenant-scoped PostgreSQL persistence, and an audit trail.
+PayPilot is an evidence-first receivables recovery demo using deterministic invoice rules, optional Gemini explanations, human approval gates, PayPal Sandbox payment verification, tenant-scoped PostgreSQL persistence, and an audit trail. The proposed Safety Lab exercises nine deterministic policy/ledger cases without provider calls or mutations; it is not a penetration test.
 
-Do not claim real-money processing, proven recovery-rate improvements, live webhook delivery to this staging app, or working password-reset email until those items are separately verified.
+Do not claim real-money processing, proven recovery-rate improvements, independently verified live webhook delivery, or verified password-reset inbox delivery.
 
 ## Submission links
 
 - Staging demo: https://paypilot-ai-pg-staging.onrender.com/
 - Source repository: https://github.com/251fa04c84-boop/paypilot-ai
 - Staging implementation PR: https://github.com/251fa04c84-boop/paypilot-ai/pull/28
+- Evidence/trust/safety improvement PR: https://github.com/251fa04c84-boop/paypilot-ai/pull/50
