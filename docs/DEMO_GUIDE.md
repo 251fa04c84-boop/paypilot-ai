@@ -8,7 +8,7 @@ The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. Public 
 
 ## Under-three-minute judge narrative
 
-The official PayPal AI Hackathon video limit is less than three minutes. Use [FINAL_DEMO_SCRIPT.md](FINAL_DEMO_SCRIPT.md) for the timed sequence. PR #52 extends the deployed ten-check Safety Lab to 18 checks, adding PayPal capture-evidence and approval-snapshot regressions. Show the 18/18 result only after PR #52 is merged, staging is deployed, and `/api/safety-lab` returns 18/18. These are policy regression checks, not a penetration test.
+The official PayPal AI Hackathon video limit is less than three minutes. Use [FINAL_DEMO_SCRIPT.md](FINAL_DEMO_SCRIPT.md) for the timed sequence. Staging now exposes the 18-check deterministic Safety Lab in Command Centre and at `/api/safety-lab`. The live endpoint returned 18/18 on 12 November 2026. These are policy regression checks, not a penetration test.
 
 ## Two-minute judge narrative
 
@@ -28,7 +28,7 @@ The official PayPal AI Hackathon video limit is less than three minutes. Use [FI
 3. Inspect the priority queue and open one overdue invoice. Expand **Why this score?** to see the deterministic evidence.
 4. Open a disputed invoice and verify that reminder and checkout actions are blocked.
 5. Open the invoice strategist and compare verified facts, rule conclusions, uncertainty, recommendation, and optional Gemini interpretation.
-6. After PR #52 is deployed, open Command Centre and show the 18 deterministic Safety Lab checks. Confirm the 18/18 result and explain that these are policy regression checks, not a penetration test.
+6. Open Command Centre and show the 18 deterministic Safety Lab checks. Confirm the live 18/18 result and explain that these are policy regression checks, not a penetration test.
 7. Run **Portfolio Autopilot Sweep** only when ready to change shared synthetic data. Inspect the exact proposals in Approvals. Approval is required before an action executes.
 8. Review the Recovery metrics card. **Paid via PayPal Sandbox** counts only records marked with a server-verified Sandbox capture. **Operator-confirmed reminders** counts the operator's recorded confirmation; it does not verify email delivery.
 9. Open Activity and export the audit log if needed.
