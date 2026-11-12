@@ -39,7 +39,7 @@ Do not claim:
 
 1. Keep changes isolated on reviewable branches until the relevant tests pass.
 2. Require the complete Node 22 test workflow to pass before merging.
-3. Render is configured for automatic deployment from `main`; after each merge, verify that the exact merged commit is deployed and healthy before claiming the live demo contains the change.
+3. Render staging is configured for `codex/paypilot-real-postgres-staging`; the separate original production service remains untouched. Verify the exact staging commit is deployed and healthy before claiming the live demo contains a change.
 4. Check the live hosted app separately; a green test suite does not prove a live Sandbox transaction or live webhook delivery.
 5. The final submission must link the public repo, hosted demo, tool disclosure, complete description and public YouTube video under three minutes.
 6. The demo must use test records and PayPal Sandbox credentials only.
