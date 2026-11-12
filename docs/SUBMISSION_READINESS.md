@@ -19,6 +19,7 @@ Last verified: 12 November 2026, 05:30 UTC (live staging API + browser smoke tes
 - The visible shared-demo disclosure banner is present in the deployed browser UI.
 - Staging `APP_BASE_URL` has been explicitly set to `https://paypilot-ai-pg-staging.onrender.com`, so newly generated payment/reminder links use the staging origin. Historical proposals already stored with the previous preview URL were not edited. A new proposal was not generated just to test the link, because that would mutate shared demo data.
 - The free-tier service may return a temporary 503 while waking. A retry succeeded; this audit did not find evidence of a persistent crash.
+- PayPal simulator verification timestamp: `2026-11-12T06:03:40.832Z`. The mock event is not a real capture and is not treated as one.
 - The latest deployment includes the assistant-routing fix: generic cash-flow advice now reaches optional Gemini rather than being misclassified as a deterministic portfolio-summary request.
 
 ## Live judge walkthrough — 05:26 UTC
@@ -32,7 +33,7 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 - Trust Centre: tenant-scoped PostgreSQL, signed private sessions, human approval, server-side capture verification, webhook signature verification and audit log are configured.
 - Trust caveats are visible: real PayPal webhook delivery and email inbox delivery are not independently verified. Public shared-demo mutations are disabled; judges can inspect synthetic data without changing it.
 - API smoke checks for health, invoices, recovery queue, summary, risk, Safety Lab, read-only simulation, Trust Centre, activity and proposals completed without errors. These were GET/read-only requests.
-- GitHub Actions run `43161631742` passed on the latest code commit: Node 22 syntax checks succeeded; the complete test suite reported 202 tests, 201 passed, 0 failed and 1 skipped. Both new assistant-routing regression tests passed.
+- GitHub Actions run `43165278581` passed: Node 22 syntax checks succeeded; the complete test suite reported 211 tests, 210 passed, 0 failed and 1 skipped. PostgreSQL integration run `43165285104` also passed, including the complete password-reset least-privilege migration and function tests.
 
 ## Password-reset least-privilege fix — prepared, not yet applied
 
