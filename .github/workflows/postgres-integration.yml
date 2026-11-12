@@ -49,9 +49,7 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f migrations/004_paypal_pending_order_status.sql
       - name: Apply private account and session migration
         run: psql -v ON_ERROR_STOP=1 -f db/migrations/20261110_private_accounts.sql
-      - name: Lock down password reset table privileges
-        run: psql -v ON_ERROR_STOP=1 -f db/migrations/20261112_password_reset_least_privilege.sql
-      - name: Move reset SECURITY DEFINER functions to a NOLOGIN least-privilege owner
+      - name: Apply complete password-reset least-privilege migration
         run: psql -v ON_ERROR_STOP=1 -f db/migrations/20261112_password_reset_executor.sql
       - name: Verify restricted private-account and reset-table access
         run: psql -v ON_ERROR_STOP=1 -f test/private-account-migration.integration.sql
