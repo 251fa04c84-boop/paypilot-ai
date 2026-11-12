@@ -1,5 +1,6 @@
 -- Move password-reset SECURITY DEFINER execution away from the broad database-owner role.
--- Apply only to the staging branch after reviewing the target database and role.
+-- ONE-TIME migration: apply only to the staging branch after reviewing the target database and role.
+-- Do not rerun after a successful commit; verify the role/table/function owners instead.
 -- paypilot_reset_executor is NOLOGIN and has BYPASSRLS only because its functions
 -- must update reset tokens and revoke sessions across tenant RLS boundaries.
 -- Its grants are limited to the reset token table and the exact user/session columns
