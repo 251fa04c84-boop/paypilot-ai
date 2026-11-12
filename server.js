@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { createStore, addAction, newId, closeDrafts, closeProposals } = require('./lib/store');
 const P = require('./lib/priority');
-const { applyCapture, verifyCapture } = require('./lib/payments');
+const { applyCapture, verifyCapture, verifyOrderForCapture } = require('./lib/payments');
 const { createPayPal } = require('./lib/paypal');
 const { generateDraft, generateText } = require('./lib/ai');
 const { ACTIONS, APPROVAL_TTL_MS, evaluate, plan, snapshotHash, buildInterpretationPrompt, validateInterpretation, portfolioTriage, processAssistantQuery } = require('./lib/agent');
@@ -84,7 +84,17 @@ function createApp(opts = {}) {
     : (db.settings = db.settings || {});
   let aiLast = null; // last real AI call outcome, shown as a service-health indicator
   const simFetch = async () => ({ ok: false, status: 503, json: async () => ({ error: { message: 'SIMULATED outage (demo switch)' } }) });
-  const simPaypal = { configured: () => true, async createOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); }, async captureOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); } };
+  const simPaypal = {
+    configured: () => true,
+    async createOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); },
+    async getOrder(orderId) {
+      const rec = db.orders.find((x) => x.orderId === orderId);
+      const invoice = rec && db.invoices.find((x) => x.id === rec.invoiceId);
+      if (!invoice) throw new Error('Simulated PayPal order not found.');
+      return { id: orderId, intent: 'CAPTURE', status: 'APPROVED', purchase_units: [{ reference_id: invoice.id, amount: { currency_code: invoice.currency, value: Number(invoice.amount).toFixed(2) } }] };
+    },
+    async captureOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); },
+  };
   const aiNow = () => (settings.simulateAi ? simFetch : aiFetch);
   const ppNow = () => (settings.simulatePaypal ? simPaypal : paypal);
   const noteAi = (source) => { if (aiKey) aiLast = { ok: String(source).startsWith('AI:'), at: new Date().toISOString(), detail: String(source) }; };
@@ -176,8 +186,19 @@ function createApp(opts = {}) {
       let order;
       const mayInitiateCapture = invoice.status === 'open' && !invoice.disputed;
       if (mayInitiateCapture && !readOnly) {
-        try { order = await ppNow().captureOrder(orderId); }
-        catch (e) { if (e.code === 'NOT_APPROVED') throw new HttpError(409, e.message); throw new HttpError(502, e.message); }
+        if (typeof ppNow().getOrder !== 'function') throw new HttpError(409, 'PayPal order pre-capture verification is unavailable. No capture was attempted.');
+        try { order = await ppNow().getOrder(orderId); }
+        catch (_) { throw new HttpError(502, 'Could not read the PayPal order for pre-capture verification. No capture was attempted.'); }
+        const preflight = verifyOrderForCapture(order, invoice, rec);
+        if (!preflight.ok) {
+          addAction(db, { invoiceId: invoice.id, type: 'capture_blocked_preflight', detail: 'PayPal order ' + orderId + ' failed pre-capture verification: ' + preflight.reason + ' No capture was attempted.' }, iso());
+          store.save();
+          throw new HttpError(409, preflight.reason + ' No capture was attempted.');
+        }
+        if (!preflight.alreadyCompleted) {
+          try { order = await ppNow().captureOrder(orderId); }
+          catch (e) { if (e.code === 'NOT_APPROVED') throw new HttpError(409, e.message); throw new HttpError(502, e.message); }
+        }
       } else {
         // Never initiate a new capture for a paid, void or disputed invoice. If PayPal
         // already completed it externally, read the order and verify the evidence instead.
