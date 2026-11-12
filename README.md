@@ -9,12 +9,12 @@ PayPilot AI is an evidence-first receivables recovery agent for small businesses
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
 > **Judge demo:** the public judge workflow remains a shared, no-login demo tenant unless private accounts are explicitly configured. Private account endpoints use scrypt password hashes, signed HttpOnly sessions and session-resolved tenant routing; they remain disabled unless `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID`, `ACCOUNT_PROVISIONING_DATABASE_URL` and a strong `SESSION_SECRET` are configured and `/api/health` reports `auth.enabled: true`. Do not assume private accounts are enabled on a deployed service until that health field is verified. Production browser-facing mutations for the shared demo remain disabled by default. Use demo data only until a real customer deployment has been security-reviewed.  
-> **Deployment distinction:** the staging demo is deployed from `codex/paypilot-real-postgres-staging` and reports PostgreSQL tenant-scoped storage. The original production service is separate and was not modified. The public staging preview has controlled judge-demo workflow actions enabled and uses shared synthetic records; those actions can change the shared demo data, and public reset is disabled. Private accounts use signed sessions and tenant-scoped PostgreSQL when enabled. This is a hackathon demo, not production accounting software.
+> **Deployment distinction:** the staging demo is deployed from `codex/paypilot-real-postgres-staging` and reports PostgreSQL tenant-scoped storage. The original production service is separate and was not modified. The public staging judge demo uses shared synthetic records but is now **read-only**; public mutations are disabled. Private accounts use signed sessions and tenant-scoped PostgreSQL when enabled. This is a hackathon demo, not production accounting software.
 
 ### Public demo mutation switch
 
 - Production defaults to read-only for browser-facing state changes because all visitors otherwise share one database.
-- To enable the interactive judge walkthrough, explicitly set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` in the hosting environment and restart/redeploy. This enables shared demo actions such as drafts, approvals, proposals and demo seeding; it does **not** enable invoice CRUD or demo-admin simulation controls.
+- Keep `ENABLE_PUBLIC_DEMO_MUTATIONS=false` on the public judge service. The current staging service is configured read-only. Only enable this flag in an isolated test environment where shared synthetic records may be changed; it does **not** enable invoice CRUD or demo-admin simulation controls.
 - Keep it unset/false when the app is not being actively demonstrated. This is a temporary judge-demo control, not a substitute for authentication or tenant isolation.
 
 ## What makes PayPilot different
@@ -114,7 +114,7 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 | PostgreSQL persistence and tenant isolation | GitHub Actions PostgreSQL integration workflow run `43035812286` completed successfully, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration. |
 | Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
 | PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. The current staging ledger shows zero verified PayPal captures; a prior operator-reported test is not represented in the current live invoice state. No new payment was initiated during this verification. |
-| PayPal webhook configuration and delivery | Health/Trust Centre report the Sandbox webhook ID is configured. **Live webhook delivery is not independently verified.** A previous read-only Sandbox lookup returned 404 for the target event and zero listed events; automated tests use a mocked verifier. |
+| PayPal webhook configuration and delivery | Sandbox webhook ID is configured. A PayPal mock simulator event reached the staging callback; its local signature verifier is being validated separately. A simulator event is not a real payment webhook. Real buyer-approved capture delivery remains unverified. |
 | Password-reset email configuration and delivery | Health reports Brevo configured on 12 November 2026. One password-reset request returned the generic accepted response. **Inbox delivery is not independently verified**, and the generic response does not prove that the address belongs to an account or that an email arrived. |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
@@ -208,7 +208,7 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 - Public staging judge-demo actions are enabled and operate only on shared synthetic records; the public reset control is disabled. Private account flows are available when the configured database roles and session settings pass health checks.
 - Brevo is configured on staging, but password-reset inbox delivery has not been independently verified. A generic accepted response is not proof of delivery.
-- PayPal webhook ID is configured on staging, but live webhook delivery has not been independently verified.
+- PayPal webhook ID is configured on staging. The mock simulator callback has reached staging; do not treat it as a real capture webhook. A real Sandbox transaction webhook still needs independent verification.
 - Public judge-demo actions can change shared synthetic records; public reset and demo-admin controls are disabled.
 - Rate-limit counters are in memory and are not distributed across instances.
 - Reminder messages are drafts for the operator to send; the app does not send reminder email/SMS.
