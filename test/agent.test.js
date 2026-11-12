@@ -13,7 +13,7 @@ function fakePayPal(counts) {
     configured: () => true,
     createOrder: async ({ invoice }) => { counts.create++; return { id: `ORDER${counts.create}`, approveUrl: `https://sandbox.paypal.test/a/${counts.create}`, invoice }; },
     captureOrder: async () => { counts.capture++; const inv = counts.inv(); return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'CAP-' + counts.capture, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; },
-    getOrder: async () => { counts.getOrder++; if (counts.orderResponse) return counts.orderResponse(); const inv = counts.inv(); return { status: 'APPROVED', purchase_units: [{ reference_id: inv.id }] }; },
+    getOrder: async (id) => { counts.getOrder++; if (counts.orderResponse) return counts.orderResponse(id); const inv = counts.inv(); return { id, intent: 'CAPTURE', status: 'APPROVED', purchase_units: [{ reference_id: inv.id, amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) } }] }; },
     verifyWebhookSignature: async () => true,
   };
 }
