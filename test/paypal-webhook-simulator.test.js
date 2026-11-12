@@ -85,3 +85,26 @@ test('simulator signature fallback is disabled outside the explicit staging test
     assert.equal(trust.json.controls.webhookSimulatorVerified, false);
   } finally { t.close(); }
 });
+
+test('a real signed PayPal webhook is recorded separately from simulator delivery', async () => {
+  const paypal = {
+    configured: () => true,
+    async verifyWebhookSignature() { return true; },
+    async verifySimulatorWebhookSignature() { throw new Error('simulator fallback must not run'); },
+  };
+  const t = await boot({ PAYPAL_WEBHOOK_SIMULATOR_ENABLED: 'false' }, paypal);
+  try {
+    const result = await t.call('POST', '/api/paypal/webhook', {
+      id: 'WH-REAL-TEST-123456',
+      event_type: 'PAYMENT.CAPTURE.COMPLETED',
+      resource: { id: 'CAPTURE-UNKNOWN-123', status: 'COMPLETED' },
+    }, mockHeaders);
+    assert.equal(result.status, 200);
+    assert.equal(result.json.ignored, true);
+    const trust = await t.call('GET', '/api/trust');
+    assert.equal(trust.json.controls.webhookDeliveryVerified, true);
+    assert.equal(trust.json.controls.webhookSimulatorVerified, false);
+    assert.equal(trust.json.webhookDeliveryVerifiedAt, '2026-11-12T06:00:00.000Z');
+    assert.equal(t.app.db.invoices.length, 0, 'unknown event must not settle any invoice');
+  } finally { t.close(); }
+});
