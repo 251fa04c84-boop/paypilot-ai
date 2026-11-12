@@ -288,3 +288,21 @@ label { color: var(--ink-soft); font-size: 12px; font-weight: 700; }
   .card, .mission-hero { animation: none !important; }
   .command-stat, .card, .tile, button, .btn { transition: none !important; }
 }
+
+/* Keep the public demo's shared-data boundary visible before any interaction. */
+.demo-notice {
+  max-width: 1220px;
+  margin: 14px auto 0;
+  padding: 10px 16px;
+  border: 1px solid #ecd7a8;
+  border-left: 4px solid #c18a2d;
+  border-radius: 10px;
+  background: #fff8e9;
+  color: #694b1d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.demo-notice strong { color: #51380f; }
+@media (max-width: 760px) {
+  .demo-notice { margin: 10px 12px 0; padding: 10px 12px; }
+}
