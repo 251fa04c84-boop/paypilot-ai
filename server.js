@@ -427,36 +427,6 @@ function createApp(opts = {}) {
       caveats: trust.caveats,
     } };
   });
-  route('POST', '/api/paypal/webhook-simulator', async ({ body, headers }) => {
-    if (!webhookSimulatorEnabled) throw new HttpError(404, 'PayPal webhook simulator is disabled.');
-    const eventId = body && body.id;
-    const eventType = body && body.event_type;
-    if (typeof eventId !== 'string' || !eventId.trim() || eventType !== 'PAYMENT.CAPTURE.COMPLETED' || !body.resource) {
-      throw new HttpError(400, 'Invalid PayPal simulator event.');
-    }
-    if (typeof paypal.verifySimulatorWebhookSignature !== 'function') {
-      throw new HttpError(503, 'PayPal simulator signature verification is unavailable.');
-    }
-    const signature = {
-      authAlgo: headers['paypal-auth-algo'],
-      certUrl: headers['paypal-cert-url'],
-      transmissionId: headers['paypal-transmission-id'],
-      transmissionSig: headers['paypal-transmission-sig'],
-      transmissionTime: headers['paypal-transmission-time'],
-      rawBody: body.__rawBody,
-    };
-    if (Object.values(signature).some((value) => value == null || value === '')) {
-      throw new HttpError(401, 'Required PayPal simulator signature headers are missing.');
-    }
-    const verified = await paypal.verifySimulatorWebhookSignature(signature);
-    if (!verified) throw new HttpError(401, 'PayPal simulator signature verification failed.');
-    settings.webhookSimulatorVerifiedAt = iso();
-    settings.webhookSimulatorEventId = eventId;
-    settings.webhookSimulatorEventType = eventType;
-    store.save();
-    return { json: { received: true, verified: true, simulation: true, eventId, eventType } };
-  });
-
   route('POST', '/api/reconciliation/preview', ({ body }) => {
     if (typeof body.csv !== 'string') throw new HttpError(400, 'Provide CSV text in the csv field.');
     try { return { json: { mode: 'preview_only', results: reconcile(body.csv, db.invoices) } }; }
@@ -560,8 +530,31 @@ function createApp(opts = {}) {
     };
     if (Object.values(signature).some((v) => v == null || v === '')) throw new HttpError(401, 'Required PayPal webhook signature headers are missing.');
     let verified = false;
+    let verificationError = null;
     try { verified = await paypal.verifyWebhookSignature(signature); }
-    catch (_) { throw new HttpError(503, 'PayPal could not verify the webhook right now. The event can be retried.'); }
+    catch (error) { verificationError = error; }
+
+    // PayPal mock simulator events cannot be checked through the postback API.
+    // During the explicitly enabled staging test window only, verify the exact raw
+    // payload locally with PayPal's special WEBHOOK_ID and return before settlement.
+    if (!verified && webhookSimulatorEnabled && typeof paypal.verifySimulatorWebhookSignature === 'function') {
+      const simulatorVerified = await paypal.verifySimulatorWebhookSignature({
+        authAlgo: signature.authAlgo,
+        certUrl: signature.certUrl,
+        transmissionId: signature.transmissionId,
+        transmissionSig: signature.transmissionSig,
+        transmissionTime: signature.transmissionTime,
+        rawBody: body.__rawBody,
+      });
+      if (simulatorVerified) {
+        settings.webhookSimulatorVerifiedAt = iso();
+        settings.webhookSimulatorEventId = eventId;
+        settings.webhookSimulatorEventType = event;
+        store.save();
+        return { json: { received: true, verified: true, simulation: true, eventId, eventType: event } };
+      }
+    }
+    if (!verified && verificationError) throw new HttpError(503, 'PayPal could not verify the webhook right now. The event can be retried.');
     if (!verified) throw new HttpError(401, 'PayPal webhook signature verification failed.');
     const cutoff = Date.parse(iso()) - 30 * 86400000;
     db.processedWebhookEvents = db.processedWebhookEvents
@@ -1027,7 +1020,7 @@ function createApp(opts = {}) {
           }
         }
       }
-      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !authPath && (!tenantContext || tenantContext.kind !== 'private') && !['/api/paypal/webhook', '/api/paypal/capture', '/api/paypal/webhook-simulator'].includes(url.pathname)) {
+      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !authPath && (!tenantContext || tenantContext.kind !== 'private') && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
         throw new HttpError(403, 'Interactive judge-demo actions are disabled on this deployment.');
       }
       // No cookie means the explicitly configured judge demo. A valid cookie means
@@ -1059,8 +1052,18 @@ function createApp(opts = {}) {
         webhookSimulatorTriggered || settings.webhookSimulatorVerifiedAt) return null;
     if (typeof paypal.simulateWebhookEvent !== 'function') throw new Error('PayPal Sandbox simulator client is unavailable.');
     webhookSimulatorTriggered = true;
+    if (typeof paypal.getWebhook !== 'function') throw new Error('PayPal Sandbox webhook lookup is unavailable.');
+    const webhook = await paypal.getWebhook(env.PAYPAL_WEBHOOK_ID);
+    const expectedUrl = baseUrl + '/api/paypal/webhook';
+    if (!webhook || webhook.url !== expectedUrl) {
+      throw new Error('The registered PayPal Sandbox webhook URL does not match the staging callback.');
+    }
+    const subscribedEvents = Array.isArray(webhook.event_types) ? webhook.event_types.map((item) => item && item.name) : [];
+    if (!subscribedEvents.includes('PAYMENT.CAPTURE.COMPLETED')) {
+      throw new Error('The registered PayPal Sandbox webhook is not subscribed to PAYMENT.CAPTURE.COMPLETED.');
+    }
     const result = await paypal.simulateWebhookEvent({
-      url: baseUrl + '/api/paypal/webhook-simulator',
+      webhookId: env.PAYPAL_WEBHOOK_ID,
       eventType: 'PAYMENT.CAPTURE.COMPLETED',
     });
     console.log('PayPal Sandbox webhook simulator queued:', result.status);
