@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { verifyCapture, applyCapture } = require('../lib/payments');
+const { verifyCapture, verifyOrderForCapture, applyCapture } = require('../lib/payments');
 
 const mk = () => ({ invoices: [{ id: 'inv1', number: 'N1', amount: 120.5, currency: 'USD', status: 'open' }], orders: [], actions: [], drafts: [] });
 const ord = (o = {}) => ({ status: 'COMPLETED', purchase_units: [{ reference_id: 'inv1', payments: { captures: [Object.assign({ id: 'CAP1', status: 'COMPLETED', amount: { value: '120.50', currency_code: 'USD' } }, o.cap || {})] } }] });
@@ -45,4 +45,40 @@ test('a second completed payment on a paid invoice is flagged, not silently acce
   const db = mk(); db.invoices[0].status = 'paid';
   const res = applyCapture(db, rec(), ord()); assert.equal(res.outcome, 'duplicate_payment');
   assert.equal(db.actions[0].type, 'duplicate_payment');
+});
+
+const approvedOrder = (overrides = {}) => ({
+  id: 'ORD1', intent: 'CAPTURE', status: 'APPROVED',
+  purchase_units: [{ reference_id: 'inv1', amount: { currency_code: 'USD', value: '120.50' } }],
+  ...overrides,
+});
+test('pre-capture gate accepts only the matching buyer-approved PayPal order', () => {
+  assert.deepEqual(verifyOrderForCapture(approvedOrder(), mk().invoices[0], rec()), { ok: true, alreadyCompleted: false, pending: false });
+});
+test('pre-capture gate rejects a changed amount or currency before money moves', () => {
+  const invoice = mk().invoices[0];
+  const amount = approvedOrder(); amount.purchase_units[0].amount.value = '999.00';
+  assert.equal(verifyOrderForCapture(amount, invoice, rec()).ok, false);
+  const currency = approvedOrder(); currency.purchase_units[0].amount.currency_code = 'EUR';
+  assert.equal(verifyOrderForCapture(currency, invoice, rec()).ok, false);
+});
+test('pre-capture gate rejects a foreign order ID or invoice reference', () => {
+  const invoice = mk().invoices[0];
+  assert.equal(verifyOrderForCapture(approvedOrder({ id: 'OTHER1' }), invoice, rec()).ok, false);
+  const foreign = approvedOrder(); foreign.purchase_units[0].reference_id = 'other';
+  assert.equal(verifyOrderForCapture(foreign, invoice, rec()).ok, false);
+});
+test('pre-capture gate rejects unapproved orders and multiple purchase units', () => {
+  const invoice = mk().invoices[0];
+  assert.equal(verifyOrderForCapture(approvedOrder({ status: 'PAYER_ACTION_REQUIRED' }), invoice, rec()).ok, false);
+  const multi = approvedOrder(); multi.purchase_units.push({ reference_id: 'inv1', amount: { currency_code: 'USD', value: '120.50' } });
+  assert.equal(verifyOrderForCapture(multi, invoice, rec()).ok, false);
+});
+test('pre-capture gate reconciles an already completed matching order without a second capture', () => {
+  const invoice = mk().invoices[0];
+  const completed = { id: 'ORD1', intent: 'CAPTURE', status: 'COMPLETED', purchase_units: [{
+    reference_id: 'inv1', amount: { currency_code: 'USD', value: '120.50' },
+    payments: { captures: [{ id: 'CAP1', status: 'COMPLETED', amount: { currency_code: 'USD', value: '120.50' } }] },
+  }] };
+  assert.deepEqual(verifyOrderForCapture(completed, invoice, rec()), { ok: true, alreadyCompleted: true, pending: false });
 });
