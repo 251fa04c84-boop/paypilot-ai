@@ -6,6 +6,10 @@
 
 The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. Public judge workflow actions are enabled for the walkthrough and can change shared demo records; public reset and demo-admin controls are disabled. Do not enter personal, confidential or real customer data. The separate original production service was not modified.
 
+## Under-three-minute judge narrative
+
+The official PayPal AI Hackathon video limit is less than three minutes. Use [FINAL_DEMO_SCRIPT.md](FINAL_DEMO_SCRIPT.md) for the timed sequence. The current staging build does not yet contain the proposed Safety Lab; do not record or claim it until PR #50 is merged, deployed and verified.
+
 ## Two-minute judge narrative
 
 | Time | Show | Say |
@@ -24,6 +28,7 @@ The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. Public 
 3. Inspect the priority queue and open one overdue invoice. Expand **Why this score?** to see the deterministic evidence.
 4. Open a disputed invoice and verify that reminder and checkout actions are blocked.
 5. Open the invoice strategist and compare verified facts, rule conclusions, uncertainty, recommendation, and optional Gemini interpretation.
+6. After PR #50 is merged and deployed, open Command Centre and show the nine deterministic Safety Lab checks. Do not present this as a penetration test.
 6. Run **Portfolio Autopilot Sweep** only when ready to change shared synthetic data. Inspect the exact proposals in Approvals. Approval is required before an action executes.
 7. Review the Recovery metrics card. **Paid via PayPal Sandbox** counts only records marked with a server-verified Sandbox capture. **Operator-confirmed reminders** counts the operator's recorded confirmation; it does not verify email delivery.
 8. Open Activity and export the audit log if needed.
@@ -43,7 +48,7 @@ The staging demo uses a PostgreSQL-backed shared synthetic judge tenant. Public 
 - Disputed and already-paid invoices are blocked from collection.
 - Gemini provides optional explanation and draft wording; deterministic application rules remain authoritative.
 - Automated tests mock external PayPal and Gemini calls. Passing tests do not prove live webhook delivery.
-- Staging health and PostgreSQL integration checks were verified on 11 November 2026. Password-reset email is not live until a provider key and verified sender are configured. Live webhook delivery to staging has not been independently verified.
+- Staging health returned HTTP 200 on 12 November 2026 and reports Brevo configured. A generic password-reset request was accepted, but inbox delivery is not independently verified. The Sandbox webhook ID is configured, but live webhook delivery to staging has not been independently verified.
 - This is a hackathon demonstration, not production accounting software. Do not claim improved recovery rates, faster payments, hours saved, or real customer outcomes without a measured pilot.
 
 
