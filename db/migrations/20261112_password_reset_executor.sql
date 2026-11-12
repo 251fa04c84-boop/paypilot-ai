@@ -35,7 +35,7 @@ $role$;
 DO $membership$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'paypilot_app') THEN
-    EXECUTE 'GRANT paypilot_reset_executor TO paypilot_app';
+    EXECUTE 'GRANT paypilot_reset_executor TO paypilot_app WITH INHERIT FALSE, SET TRUE';
   END IF;
 END
 $membership$;
@@ -250,9 +250,9 @@ GRANT EXECUTE ON FUNCTION public.paypilot_create_password_reset(TEXT, TEXT, TIME
 GRANT EXECUTE ON FUNCTION public.paypilot_complete_password_reset(TEXT, TEXT, TIMESTAMPTZ) TO paypilot_account_provisioner;
 GRANT EXECUTE ON FUNCTION public.paypilot_invalidate_password_reset(TEXT) TO paypilot_account_provisioner;
 
--- The Neon administration role may retain a management-granted membership for
--- ownership transfer, but it must not inherit privileges or SET ROLE to the
--- NOLOGIN executor. Render runtime/provisioner roles are never members.
+-- The Neon administration role receives only an explicit SET-capable, non-inheriting
+-- membership so it can transfer ownership and administer the reset objects. It does
+-- not receive ADMIN OPTION. Render runtime/provisioner roles are never members.
 DO $membership_assert$
 BEGIN
   IF EXISTS (
@@ -260,9 +260,9 @@ BEGIN
     JOIN pg_catalog.pg_roles r ON r.oid = m.member
     WHERE m.roleid = 'paypilot_reset_executor'::regrole
       AND r.rolname = 'paypilot_app'
-      AND (m.inherit_option OR m.set_option)
+      AND (m.admin_option OR m.inherit_option OR NOT m.set_option)
   ) THEN
-    RAISE EXCEPTION 'paypilot_app reset-owner membership must not inherit, SET ROLE, or grant membership';
+    RAISE EXCEPTION 'paypilot_app reset-owner membership must be non-inheriting, non-admin, and explicitly SET-capable';
   END IF;
 END
 $membership_assert$;
