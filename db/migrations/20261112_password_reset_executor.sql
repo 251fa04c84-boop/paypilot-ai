@@ -154,6 +154,27 @@ BEGIN
 END;
 $function$;
 
+-- Keep direct table access denied even if a future grant is accidentally added.
+-- The BYPASSRLS function owner can still operate through the narrowly scoped functions.
+ALTER TABLE public.paypilot_password_reset_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.paypilot_password_reset_tokens FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS paypilot_password_reset_tokens_tenant_scope ON public.paypilot_password_reset_tokens;
+DROP POLICY IF EXISTS paypilot_password_reset_tokens_deny_direct_access ON public.paypilot_password_reset_tokens;
+CREATE POLICY paypilot_password_reset_tokens_deny_direct_access
+  ON public.paypilot_password_reset_tokens
+  USING (false) WITH CHECK (false);
+
+DO $legacy_rls$
+BEGIN
+  IF to_regclass('public.paypilot_password_resets') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public.paypilot_password_resets ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'ALTER TABLE public.paypilot_password_resets FORCE ROW LEVEL SECURITY';
+    EXECUTE 'DROP POLICY IF EXISTS paypilot_password_resets_deny_direct_access ON public.paypilot_password_resets';
+    EXECUTE 'CREATE POLICY paypilot_password_resets_deny_direct_access ON public.paypilot_password_resets USING (false) WITH CHECK (false)';
+  END IF;
+END
+$legacy_rls$;
+
 -- The role must own the objects used by its SECURITY DEFINER functions.
 ALTER TABLE public.paypilot_password_reset_tokens OWNER TO paypilot_reset_executor;
 ALTER TABLE IF EXISTS public.paypilot_password_resets OWNER TO paypilot_reset_executor;
