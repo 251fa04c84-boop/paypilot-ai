@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { verifyCapture, applyCapture } = require('../lib/payments');
 
 const mk = () => ({ invoices: [{ id: 'inv1', number: 'N1', amount: 120.5, currency: 'USD', status: 'open' }], orders: [], actions: [], drafts: [] });
-const ord = (o = {}) => ({ status: 'COMPLETED', purchase_units: [{ reference_id: 'inv1', payments: { captures: [Object.assign({ id: 'CAP1', status: 'COMPLETED', amount: { value: '120.50', currency_code: 'USD' } }, o.cap || {})] } }] });
+const ord = (o = {}) => ({ id: 'ORD1', status: 'COMPLETED', purchase_units: [{ reference_id: 'inv1', payments: { captures: [Object.assign({ id: 'CAP1', status: 'COMPLETED', amount: { value: '120.50', currency_code: 'USD' } }, o.cap || {})] } }] });
 const rec = () => ({ orderId: 'ORD1', invoiceId: 'inv1', status: 'created' });
 
 test('completed, matching capture marks invoice paid and logs it', () => {
@@ -40,6 +40,41 @@ test('declined or unapproved order never marks paid', () => {
   assert.equal(applyCapture(db, rec(), o).outcome, 'failed'); assert.equal(db.invoices[0].status, 'open');
   assert.equal(verifyCapture({ purchase_units: [{ reference_id: 'inv1' }] }, db.invoices[0]).ok, false);
   assert.equal(verifyCapture(null, db.invoices[0]).ok, false);
+});
+
+test('provider order ID must match the locally recorded order ID', () => {
+  const db = mk(); const o = ord(); o.id = 'ORD-OTHER';
+  const result = applyCapture(db, rec(), o);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(db.invoices[0].status, 'open');
+  assert.match(result.message, /different order/);
+});
+
+test('multiple purchase units are rejected for the single-invoice order model', () => {
+  const db = mk(); const o = ord();
+  o.purchase_units.push(structuredClone(o.purchase_units[0]));
+  const result = applyCapture(db, rec(), o);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(db.invoices[0].status, 'open');
+  assert.match(result.message, /exactly one purchase unit/);
+});
+
+test('multiple captures are rejected instead of accepting only the first partial capture', () => {
+  const db = mk(); const o = ord();
+  o.purchase_units[0].payments.captures.push({ id: 'CAP2', status: 'COMPLETED', amount: { value: '20.00', currency_code: 'USD' } });
+  const result = applyCapture(db, rec(), o);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(db.invoices[0].status, 'open');
+  assert.match(result.message, /multiple captures/);
+});
+
+test('capture without a provider capture ID is rejected', () => {
+  const db = mk(); const o = ord();
+  delete o.purchase_units[0].payments.captures[0].id;
+  const result = applyCapture(db, rec(), o);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(db.invoices[0].status, 'open');
+  assert.match(result.message, /capture ID is missing/);
 });
 test('a second completed payment on a paid invoice is flagged, not silently accepted', () => {
   const db = mk(); db.invoices[0].status = 'paid';

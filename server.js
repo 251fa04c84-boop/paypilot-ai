@@ -184,7 +184,7 @@ function createApp(opts = {}) {
         if (typeof ppNow().getOrder !== 'function') throw new HttpError(409, 'Invoice state blocks capture. No new capture was attempted.');
         try { order = await ppNow().getOrder(orderId); }
         catch (_) { throw new HttpError(502, 'Could not verify the existing PayPal order. No new capture was attempted.'); }
-        const verification = verifyCapture(order, invoice);
+        const verification = verifyCapture(order, invoice, orderId);
         if (!verification.ok && !verification.pending) {
           const reason = invoice.disputed ? 'The invoice is disputed' : 'The invoice is ' + invoice.status;
           addAction(db, { invoiceId: invoice.id, type: invoice.disputed ? 'capture_blocked_dispute' : 'capture_blocked_invoice_state', detail: reason + '. PayPilot did not initiate a new PayPal capture for order ' + orderId + '.' }, iso());
@@ -583,6 +583,7 @@ function createApp(opts = {}) {
       const inv = db.invoices.find((i) => i.id === rec.invoiceId);
       if (inv && inv.demo) {
         const mockOrder = {
+          id: orderId,
           status: 'COMPLETED',
           purchase_units: [{
             reference_id: inv.id,

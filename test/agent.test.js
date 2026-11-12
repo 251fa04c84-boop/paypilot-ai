@@ -12,8 +12,8 @@ function fakePayPal(counts) {
   return {
     configured: () => true,
     createOrder: async ({ invoice }) => { counts.create++; return { id: `ORDER${counts.create}`, approveUrl: `https://sandbox.paypal.test/a/${counts.create}`, invoice }; },
-    captureOrder: async () => { counts.capture++; const inv = counts.inv(); return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'CAP-' + counts.capture, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; },
-    getOrder: async () => { counts.getOrder++; if (counts.orderResponse) return counts.orderResponse(); const inv = counts.inv(); return { status: 'APPROVED', purchase_units: [{ reference_id: inv.id }] }; },
+    captureOrder: async () => { counts.capture++; const inv = counts.inv(); return { id: `ORDER${counts.create}`, status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'CAP-' + counts.capture, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; },
+    getOrder: async () => { counts.getOrder++; if (counts.orderResponse) return counts.orderResponse(); const inv = counts.inv(); return { id: `ORDER${counts.create}`, status: 'APPROVED', purchase_units: [{ reference_id: inv.id }] }; },
     verifyWebhookSignature: async () => true,
   };
 }
@@ -207,7 +207,7 @@ test('a capture already completed at PayPal during a dispute is verified and fla
     await t.call('POST', `/api/invoices/${inv.id}/dispute`, { disputed: true, note: 'Client disputes the work.' });
     t.counts.orderResponse = () => {
       const current = t.app.db.invoices[0];
-      return { status: 'COMPLETED', purchase_units: [{ reference_id: current.id, payments: { captures: [{ id: 'CAP-EXTERNAL', status: 'COMPLETED', amount: { value: current.amount.toFixed(2), currency_code: current.currency } }] } }] };
+      return { id: orderId, status: 'COMPLETED', purchase_units: [{ reference_id: current.id, payments: { captures: [{ id: 'CAP-EXTERNAL', status: 'COMPLETED', amount: { value: current.amount.toFixed(2), currency_code: current.currency } }] } }] };
     };
     const result = await t.call('POST', '/api/paypal/capture', { orderId });
     assert.equal(result.status, 200);
@@ -230,7 +230,7 @@ test('a verified PayPal capture-completed webhook records a payment while preser
     await t.call('POST', `/api/invoices/${inv.id}/dispute`, { disputed: true, note: 'Client disputes the work.' });
     t.counts.orderResponse = () => {
       const current = t.app.db.invoices[0];
-      return { status: 'COMPLETED', purchase_units: [{ reference_id: current.id, payments: { captures: [{ id: 'CAP-WEBHOOK', status: 'COMPLETED', amount: { value: current.amount.toFixed(2), currency_code: current.currency } }] } }] };
+      return { id: orderId, status: 'COMPLETED', purchase_units: [{ reference_id: current.id, payments: { captures: [{ id: 'CAP-WEBHOOK', status: 'COMPLETED', amount: { value: current.amount.toFixed(2), currency_code: current.currency } }] } }] };
     };
     const result = await t.call('POST', '/api/paypal/webhook', {
       id: 'WH-CAPTURE-DISPUTE-1',
