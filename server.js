@@ -583,6 +583,7 @@ function createApp(opts = {}) {
       const inv = db.invoices.find((i) => i.id === rec.invoiceId);
       if (inv && inv.demo) {
         const mockOrder = {
+          id: orderId,
           status: 'COMPLETED',
           purchase_units: [{
             reference_id: inv.id,
