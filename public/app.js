@@ -663,8 +663,8 @@ async function viewRisk() {
 }
 
 async function viewCommandCentre() {
-  const [overview, invoices, health] = await Promise.all([
-    api('GET', '/api/intelligence/overview'), api('GET', '/api/invoices'), api('GET', '/api/health')
+  const [overview, invoices, health, safety] = await Promise.all([
+    api('GET', '/api/intelligence/overview'), api('GET', '/api/invoices'), api('GET', '/api/health'), api('GET', '/api/safety-lab')
   ]);
   const risk = overview.risk, anomalies = overview.anomalies;
   main.replaceChildren(
@@ -674,6 +674,7 @@ async function viewCommandCentre() {
       h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Open invoices'), h('div', { class: 'big' }, String(risk.totalOpen))),
       h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Risk flags'), h('div', { class: 'big' }, String(risk.flagged))),
       h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Payment anomalies'), h('div', { class: 'big' }, String(anomalies.anomalyCount))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Safety checks passed'), h('div', { class: 'big' }, safety.passed + '/' + safety.total)),
       h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Pending approvals'), h('div', { class: 'big' }, String(health.demo.publicMutationsEnabled ? 'Enabled' : 'Restricted')))),
     h('section', { class: 'card glow' }, h('strong', {}, '1 · Portfolio intelligence'),
       h('p', { class: 'muted small' }, risk.disclaimer),
@@ -684,6 +685,10 @@ async function viewCommandCentre() {
       anomalies.anomalies.length ? anomalies.anomalies.slice(0, 8).map((x) => h('div', { class: 'sep' },
         h('div', { class: 'row' }, h('strong', {}, x.code.replace(/_/g, ' ')), pill(x.severity === 'critical' ? 'bad' : 'warn', x.severity)),
         h('p', { class: 'muted small' }, (x.invoiceNumber ? x.invoiceNumber + ': ' : '') + x.evidence))) : h('p', { class: 'muted' }, 'No payment-ledger anomalies detected in the current demo records.')),
+    h('section', { class: 'card glow' }, h('strong', {}, '3 · Deterministic recovery safety lab'),
+      h('p', { class: 'muted small' }, safety.disclaimer),
+      h('div', { class: 'row' }, pill(safety.failed === 0 ? 'ok' : 'bad', safety.passed + ' / ' + safety.total + ' passed'), h('span', { class: 'muted small' }, 'No AI calls · no provider calls · no mutations')),
+      ...safety.checks.map((x) => h('div', { class: 'sep row' }, h('span', {}, x.name), pill(x.status === 'passed' ? 'ok' : 'bad', x.status.toUpperCase())))),
     h('section', { class: 'card' }, h('strong', {}, '3 · Recovery what-if simulator'),
       h('p', { class: 'muted small' }, 'Select a synthetic or workspace invoice and preview the policy outcome. This does not create a draft, checkout, approval, proposal or audit event.'),
     ));
