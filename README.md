@@ -114,7 +114,7 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 | PostgreSQL persistence and tenant isolation | GitHub Actions PostgreSQL integration workflow run `43035812286` completed successfully, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration. |
 | Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
 | PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. The current staging ledger shows zero verified PayPal captures; a prior operator-reported test is not represented in the current live invoice state. No new payment was initiated during this verification. |
-| PayPal webhook configuration and delivery | Sandbox webhook ID is configured. A PayPal mock simulator event reached the staging callback; its local signature verifier is being validated separately. A simulator event is not a real payment webhook. Real buyer-approved capture delivery remains unverified. |
+| PayPal webhook configuration and delivery | A PayPal mock simulator event reached the actual staging callback and its cryptographic signature verified. The handler acknowledges it as a simulator-only event and does not settle an invoice. A real buyer-approved capture webhook remains unverified. |
 | Password-reset email configuration and delivery | Health reports Brevo configured on 12 November 2026. One password-reset request returned the generic accepted response. **Inbox delivery is not independently verified**, and the generic response does not prove that the address belongs to an account or that an email arrived. |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
@@ -208,7 +208,7 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 - Public staging judge-demo actions are enabled and operate only on shared synthetic records; the public reset control is disabled. Private account flows are available when the configured database roles and session settings pass health checks.
 - Brevo is configured on staging, but password-reset inbox delivery has not been independently verified. A generic accepted response is not proof of delivery.
-- PayPal webhook ID is configured on staging. The mock simulator callback has reached staging; do not treat it as a real capture webhook. A real Sandbox transaction webhook still needs independent verification.
+- PayPal webhook ID is configured on staging. A signed mock simulator callback has been verified; it does not represent a real capture. A real Sandbox transaction webhook still needs independent verification.
 - Public judge-demo actions can change shared synthetic records; public reset and demo-admin controls are disabled.
 - Rate-limit counters are in memory and are not distributed across instances.
 - Reminder messages are drafts for the operator to send; the app does not send reminder email/SMS.
