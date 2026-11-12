@@ -189,7 +189,7 @@ test('PayPal simulator self-verification validates the exact raw body and signed
   const rawBody = JSON.stringify({ id: 'WH-SIM-123', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: 'CAPTURE-SIM-123' } });
   const transmissionId = 'sim-transmission-123';
   const transmissionTime = '2026-11-12T06:00:00Z';
-  const message = transmissionId + '|' + transmissionTime + '|WEBHOOK_ID|' + crc32(Buffer.from(rawBody, 'utf8'));
+  const message = transmissionId + '|' + transmissionTime + '|WEBHOOK_ID|' + crc32(Buffer.from(rawBody, 'utf8')) + ';';
   const signer = crypto.createSign('RSA-SHA256');
   signer.update(message, 'utf8');
   signer.end();
