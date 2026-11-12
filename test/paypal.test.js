@@ -1,7 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPayPal } = require('../lib/paypal');
+const crypto = require('node:crypto');
+const { createPayPal, crc32 } = require('../lib/paypal');
 
 function response(status, value, contentLength) {
   return {
@@ -179,4 +180,89 @@ test('PayPal rejects HTTPS approval links hosted by an untrusted domain', async 
     invoice: { id: 'inv1', number: 'INV-1', amount: 10, currency: 'USD' },
     requestId: 'req-1', returnUrl: 'https://example.test/return', cancelUrl: 'https://example.test/cancel',
   }), /trusted Sandbox approval link/i);
+});
+
+
+test('PayPal simulator self-verification validates the exact raw body and signed transmission tuple', async () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const publicPem = publicKey.export({ type: 'spki', format: 'pem' });
+  const rawBody = JSON.stringify({ id: 'WH-SIM-123', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: 'CAPTURE-SIM-123' } });
+  const transmissionId = 'sim-transmission-123';
+  const transmissionTime = '2026-11-12T06:00:00Z';
+  const message = transmissionId + '|' + transmissionTime + '|WEBHOOK_ID|' + crc32(Buffer.from(rawBody, 'utf8'));
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(message, 'utf8');
+  signer.end();
+  const transmissionSig = signer.sign(privateKey, 'base64');
+  let certificateFetches = 0;
+  const paypal = createPayPal({
+    clientId: 'sandbox-client',
+    secret: 'sandbox-secret',
+    fetchImpl: async (url) => {
+      certificateFetches++;
+      assert.equal(url, 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-test');
+      return response(200, publicPem);
+    },
+  });
+  const signature = {
+    authAlgo: 'SHA256withRSA',
+    certUrl: 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-test',
+    transmissionId,
+    transmissionSig,
+    transmissionTime,
+    rawBody,
+  };
+  assert.equal(await paypal.verifySimulatorWebhookSignature(signature), true);
+  assert.equal(await paypal.verifySimulatorWebhookSignature({ ...signature, rawBody: rawBody + ' ' }), false);
+  assert.equal(certificateFetches, 1, 'certificate should be cached for subsequent verification');
+});
+
+test('PayPal simulator verifier rejects certificate URLs outside the Sandbox PayPal certificate host', async () => {
+  let called = false;
+  const paypal = createPayPal({
+    clientId: 'sandbox-client',
+    secret: 'sandbox-secret',
+    fetchImpl: async () => { called = true; return response(200, '-----BEGIN CERTIFICATE-----'); },
+  });
+  assert.equal(await paypal.verifySimulatorWebhookSignature({
+    authAlgo: 'SHA256withRSA',
+    certUrl: 'https://attacker.example/v1/notifications/certs/CERT-test',
+    transmissionId: 'id',
+    transmissionSig: 'YWJj',
+    transmissionTime: '2026-11-12T06:00:00Z',
+    rawBody: '{}',
+  }), false);
+  assert.equal(called, false);
+});
+
+test('PayPal Sandbox simulator queues only the staging webhook endpoint and capture-completed event', async () => {
+  const calls = [];
+  const paypal = createPayPal({
+    clientId: 'sandbox-client',
+    secret: 'sandbox-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v1/oauth2/token')) return response(200, { access_token: 'sandbox-access-token', expires_in: 3600 });
+      return response(202, '');
+    },
+  });
+  const result = await paypal.simulateWebhookEvent({
+    url: 'https://paypilot-ai-pg-staging.onrender.com/api/paypal/webhook-simulator',
+    eventType: 'PAYMENT.CAPTURE.COMPLETED',
+  });
+  assert.equal(result.status, 202);
+  assert.equal(calls[1].url, 'https://api-m.sandbox.paypal.com/v1/notifications/simulate-event');
+  assert.deepEqual(JSON.parse(calls[1].options.body), {
+    url: 'https://paypilot-ai-pg-staging.onrender.com/api/paypal/webhook-simulator',
+    event_type: 'PAYMENT.CAPTURE.COMPLETED',
+    resource_version: '2.0',
+  });
+  await assert.rejects(paypal.simulateWebhookEvent({
+    url: 'https://attacker.example/api/paypal/webhook-simulator',
+    eventType: 'PAYMENT.CAPTURE.COMPLETED',
+  }), /Only the staging/);
+});
+
+test('CRC32 implementation matches the standard check vector', () => {
+  assert.equal(crc32(Buffer.from('123456789')), 0xcbf43926);
 });
