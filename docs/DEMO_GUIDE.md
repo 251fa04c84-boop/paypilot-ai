@@ -5,7 +5,7 @@
 
 This guide describes the currently deployed restricted demo. Use demo records only. The public app has no login or tenant isolation; all visitors share one demo workspace, and the Render free-tier JSON store can reset after a restart.
 
-**Release verification note (8 Nov 2026):** The currently live Render deployment is still commit `0072714`. The Judge Quick Start card and invoice-card “Why this score?” disclosure have been merged into GitHub `main` (commit `366213a`) but have **not** yet been confirmed on the hosted site. Until Render reports that commit as live, judges will see the earlier collapsed “Demo mode: scenarios for judges” section and the existing score meter/detail evidence. Do not narrate the new card as visible until the deployment is verified.
+**Live-release caution:** GitHub `main` and the hosted Render service can be on different revisions. Before recording or narrating a newly added UI element, open the hosted app and confirm that exact element is visible. This guide describes the product workflow; it does not certify which commit is currently deployed.
 
 ## 2-minute judge narrative
 
