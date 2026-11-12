@@ -714,22 +714,23 @@ async function viewTrustCentre() {
   const trust = await api('GET', '/api/trust');
   const c = trust.controls;
   const rows = [
-    ['PayPal Sandbox only', trust.environment],
     ['Tenant-scoped PostgreSQL', c.tenantScopedStorage],
     ['Signed private sessions', c.signedSessions],
     ['Human approval gate', c.humanApproval],
     ['Server-side capture verification', c.serverSideCaptureVerification],
-    ['Signed webhook configured', c.webhookConfigured],
+    ['PayPal webhook ID configured', c.webhookConfigured],
+    ['PayPal webhook delivery independently verified', c.webhookDeliveryVerified, 'Verified', 'Not independently verified'],
     ['Audit log', c.auditLog],
     ['Optional AI configured', c.aiConfigured],
     ['Email provider configured', c.emailConfigured],
-    ['Public demo mutations', c.publicDemoMutations],
+    ['Email delivery independently verified', c.emailDeliveryVerified, 'Verified', 'Not independently verified'],
+    ['Public demo mutations', c.publicDemoMutations, 'Enabled — shared demo data', 'Disabled'],
   ];
   main.replaceChildren(h('h2', {}, 'Trust centre'),
-    h('p', { class: 'muted' }, 'A transparent control inventory. This endpoint exposes configuration status only; it never returns credentials, tokens or secret values.'),
+    h('p', { class: 'muted' }, 'A transparent control inventory. Configured credentials, verified provider delivery and shared-demo exposure are shown separately. This endpoint never returns credentials, tokens or secret values.'),
     h('section', { class: 'card glow' }, h('strong', {}, 'Environment'), h('p', {}, trust.environment), h('p', { class: 'muted small' }, trust.storage)),
     h('section', { class: 'card' }, h('strong', {}, 'Security and integration controls'),
-      ...rows.map(([label, value]) => h('div', { class: 'sep row' }, h('span', {}, label), pill(value === true ? 'ok' : value === false ? 'warn' : 'none', typeof value === 'boolean' ? (value ? 'Configured' : 'Not configured') : value)))),
+      ...rows.map(([label, value, yes = 'Configured', no = 'Not configured']) => h('div', { class: 'sep row' }, h('span', {}, label), pill(value === true ? 'ok' : value === false ? 'warn' : 'none', typeof value === 'boolean' ? (value ? yes : no) : value)))),
     h('section', { class: 'card' }, h('strong', {}, 'Enforced boundaries'), h('ul', { class: 'list' }, trust.boundaries.map((x) => h('li', {}, x)))),
     h('section', { class: 'card warnbox' }, h('strong', {}, 'Known configuration gaps'),
       trust.caveats.length ? h('ul', { class: 'list' }, trust.caveats.map((x) => h('li', {}, x))) : h('p', {}, 'No known configuration gaps reported by this environment.')));
