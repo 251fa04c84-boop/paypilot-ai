@@ -67,7 +67,8 @@ A real browser smoke test loaded the public app and navigated Overview, Command 
 | Password-reset email | Brevo sender is active and the app reports configured; no test email has been sent and inbox delivery is not verified |
 | Password-reset table least privilege | New restricted-owner migration is prepared and CI-tested; it has not yet been applied to live staging |
 | New payment/reminder link origin | `APP_BASE_URL` set to staging; no new proposal was generated to avoid shared-demo mutation |
-| Public judge mutations | Disabled on staging; the shared public tenant is read-only |\n| Production | Separate production service was not accessed or modified |
+| Public judge mutations | Disabled on staging; the shared public tenant is read-only |
+| Production | Separate production service was not accessed or modified |
 
 ## Submission checklist
 
