@@ -99,9 +99,9 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 
 - Uses PayPal Orders v2 in Sandbox only.
 - The browser does not decide that an invoice is paid. The server verifies the capture status, amount, currency and invoice association before updating records.
-- The real webhook endpoint verifies PayPal's webhook signature through PayPal's verification API, requires the configured Sandbox webhook ID, and handles duplicate event IDs to reduce replay/double-processing risk.
+- Real PayPal webhook events are verified through PayPal's verification API with the configured Sandbox webhook ID; mock simulator events use PayPal's documented raw-body cryptographic verification with the special `WEBHOOK_ID` and return before payment settlement. Duplicate real event IDs are handled idempotently.
 - The webhook route fails closed when required configuration or signature headers are missing or verification fails.
-- Demo webhook simulation is isolated to demo invoices and is not a substitute for a real signed webhook.
+- The PayPal mock simulator test records only a verification timestamp/event reference; it never changes invoices, orders or payment status and is not a substitute for a real transaction webhook.
 - Never commit PayPal credentials, webhook IDs or Gemini API keys. Configure them as server environment variables.
 
 ### Verification status (distinguish manual checks from automated tests)
@@ -115,7 +115,7 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 | Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
 | PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. The current staging ledger shows zero verified PayPal captures; a prior operator-reported test is not represented in the current live invoice state. No new payment was initiated during this verification. |
 | PayPal webhook configuration and delivery | A PayPal mock simulator event reached the actual staging callback and its cryptographic signature verified. The handler acknowledges it as a simulator-only event and does not settle an invoice. A real buyer-approved capture webhook remains unverified. |
-| Password-reset email configuration and delivery | Health reports Brevo configured on 12 November 2026. One password-reset request returned the generic accepted response. **Inbox delivery is not independently verified**, and the generic response does not prove that the address belongs to an account or that an email arrived. |
+| Password-reset email configuration and delivery | Brevo reports an active verified sender and staging health reports the provider configured. No test email was sent during this audit. **Inbox delivery remains unverified.** |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
 
@@ -207,7 +207,7 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 ## Known limitations
 
 - Public staging judge-demo actions are enabled and operate only on shared synthetic records; the public reset control is disabled. Private account flows are available when the configured database roles and session settings pass health checks.
-- Brevo is configured on staging, but password-reset inbox delivery has not been independently verified. A generic accepted response is not proof of delivery.
+- Brevo is configured on staging with an active verified sender, but password-reset inbox delivery has not been independently verified. No test email has been sent in this audit.
 - PayPal webhook ID is configured on staging. A signed mock simulator callback has been verified; it does not represent a real capture. A real Sandbox transaction webhook still needs independent verification.
 - Public judge-demo actions can change shared synthetic records; public reset and demo-admin controls are disabled.
 - Rate-limit counters are in memory and are not distributed across instances.
