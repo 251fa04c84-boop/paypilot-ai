@@ -675,7 +675,7 @@ async function viewCommandCentre() {
       h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Risk flags'), h('div', { class: 'big' }, String(risk.flagged))),
       h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Payment anomalies'), h('div', { class: 'big' }, String(anomalies.anomalyCount))),
       h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Safety checks passed'), h('div', { class: 'big' }, safety.passed + '/' + safety.total)),
-      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Pending approvals'), h('div', { class: 'big' }, String(health.demo.publicMutationsEnabled ? 'Enabled' : 'Restricted')))),
+      h('div', { class: 'tile' }, h('div', { class: 'muted small' }, 'Shared demo actions'), h('div', { class: 'big' }, String(health.demo.publicMutationsEnabled ? 'Enabled' : 'Restricted')))),
     h('section', { class: 'card glow' }, h('strong', {}, '1 · Portfolio intelligence'),
       h('p', { class: 'muted small' }, risk.disclaimer),
       h('div', { class: 'row' }, h('span', {}, 'Critical ' + risk.counts.critical), h('span', {}, 'High ' + risk.counts.high), h('span', {}, 'Medium ' + risk.counts.medium), h('span', {}, 'Low ' + risk.counts.low)),
