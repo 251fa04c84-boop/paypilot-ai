@@ -1,11 +1,13 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPayPal } = require('../lib/paypal');
+const crypto = require('node:crypto');
+const { createPayPal, crc32 } = require('../lib/paypal');
 
 function response(status, value, contentLength) {
   return {
     status,
+    ok: status >= 200 && status < 300,
     headers: { get(name) { return name.toLowerCase() === 'content-length' ? (contentLength || null) : null; } },
     async text() { return typeof value === 'string' ? value : JSON.stringify(value); },
   };
@@ -35,6 +37,43 @@ test('PayPal webhook verifier sends the event and transmission headers to the of
   assert.equal(payload.webhook_id, 'webhook-id');
   assert.deepEqual(payload.webhook_event, event);
   assert.equal(payload.transmission_id, 'transmission-1');
+});
+
+test('PayPal can read an existing webhook event through the Sandbox API without resending it', async () => {
+  const calls = [];
+  const event = { id: 'WH-COC11055RA711503B-4YM959094A144403T', event_type: 'CHECKOUT.ORDER.APPROVED', create_time: '2026-11-11T10:00:00Z', summary: 'Test event' };
+  const paypal = createPayPal({
+    clientId: 'sandbox-client', secret: 'sandbox-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v1/oauth2/token')) return response(200, { access_token: 'sandbox-access-token', expires_in: 3600 });
+      return response(200, event);
+    },
+  });
+  const result = await paypal.getWebhookEvent(event.id);
+  assert.deepEqual(result, event);
+  assert.equal(calls[1].url, 'https://api-m.sandbox.paypal.com/v1/notifications/webhooks-events/' + event.id);
+  assert.equal(calls[1].options.method, 'GET');
+  assert.equal(calls[1].options.headers.Authorization, 'Bearer sandbox-access-token');
+  await assert.rejects(paypal.getWebhookEvent('../bad'), /Invalid PayPal webhook event ID/);
+});
+
+test('PayPal can list recent Sandbox webhook events with date filters', async () => {
+  const calls = [];
+  const paypal = createPayPal({
+    clientId: 'sandbox-client', secret: 'sandbox-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v1/oauth2/token')) return response(200, { access_token: 'sandbox-access-token', expires_in: 3600 });
+      return response(200, { count: 1, events: [{ id: 'WH-123', event_type: 'CHECKOUT.ORDER.APPROVED' }] });
+    },
+  });
+  const result = await paypal.listWebhookEvents({ startTime: '2026-11-01T00:00:00Z', endTime: '2026-11-12T23:59:59Z', pageSize: 100 });
+  assert.equal(result.count, 1);
+  assert.match(calls[1].url, /\/v1\/notifications\/webhooks-events\?/);
+  assert.match(calls[1].url, /start_time=2026-11-01T00%3A00%3A00Z/);
+  assert.match(calls[1].url, /page_size=100/);
+  assert.equal(calls[1].options.method, 'GET');
 });
 
 test('PayPal webhook verifier returns false when required verification inputs are missing', async () => {
@@ -142,4 +181,106 @@ test('PayPal rejects HTTPS approval links hosted by an untrusted domain', async 
     invoice: { id: 'inv1', number: 'INV-1', amount: 10, currency: 'USD' },
     requestId: 'req-1', returnUrl: 'https://example.test/return', cancelUrl: 'https://example.test/cancel',
   }), /trusted Sandbox approval link/i);
+});
+
+
+test('PayPal simulator self-verification validates the exact raw body and signed transmission tuple', async () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const publicPem = publicKey.export({ type: 'spki', format: 'pem' });
+  const rawBody = JSON.stringify({ id: 'WH-SIM-123', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: 'CAPTURE-SIM-123' } });
+  const transmissionId = 'sim-transmission-123';
+  const transmissionTime = '2026-11-12T06:00:00Z';
+  const message = transmissionId + '|' + transmissionTime + '|WEBHOOK_ID|' + crc32(Buffer.from(rawBody, 'utf8'));
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(message, 'utf8');
+  signer.end();
+  const transmissionSig = signer.sign(privateKey, 'base64');
+  let certificateFetches = 0;
+  const paypal = createPayPal({
+    clientId: 'sandbox-client',
+    secret: 'sandbox-secret',
+    fetchImpl: async (url) => {
+      certificateFetches++;
+      assert.equal(url, 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-test');
+      return response(200, publicPem);
+    },
+  });
+  const signature = {
+    authAlgo: 'SHA256withRSA',
+    certUrl: 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-test',
+    transmissionId,
+    transmissionSig,
+    transmissionTime,
+    rawBody,
+  };
+  assert.equal(await paypal.verifySimulatorWebhookSignature(signature), true);
+  assert.equal(await paypal.verifySimulatorWebhookSignature({ ...signature, rawBody: rawBody + ' ' }), false);
+  assert.equal(certificateFetches, 1, 'certificate should be cached for subsequent verification');
+});
+
+test('PayPal simulator verifier rejects certificate URLs outside the Sandbox PayPal certificate host', async () => {
+  let called = false;
+  const paypal = createPayPal({
+    clientId: 'sandbox-client',
+    secret: 'sandbox-secret',
+    fetchImpl: async () => { called = true; return response(200, '-----BEGIN CERTIFICATE-----'); },
+  });
+  assert.equal(await paypal.verifySimulatorWebhookSignature({
+    authAlgo: 'SHA256withRSA',
+    certUrl: 'https://attacker.example/v1/notifications/certs/CERT-test',
+    transmissionId: 'id',
+    transmissionSig: 'YWJj',
+    transmissionTime: '2026-11-12T06:00:00Z',
+    rawBody: '{}',
+  }), false);
+  assert.equal(called, false);
+});
+
+test('PayPal can inspect a registered Sandbox webhook without exposing credentials', async () => {
+  const calls = [];
+  const webhook = { id: 'WEBHOOK-TEST-123456', url: 'https://paypilot-ai-pg-staging.onrender.com/api/paypal/webhook', event_types: [{ name: 'PAYMENT.CAPTURE.COMPLETED' }] };
+  const paypal = createPayPal({
+    clientId: 'sandbox-client',
+    secret: 'sandbox-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v1/oauth2/token')) return response(200, { access_token: 'sandbox-access-token', expires_in: 3600 });
+      return response(200, webhook);
+    },
+  });
+  assert.deepEqual(await paypal.getWebhook(webhook.id), webhook);
+  assert.equal(calls[1].url, 'https://api-m.sandbox.paypal.com/v1/notifications/webhooks/' + webhook.id);
+  await assert.rejects(paypal.getWebhook('../bad'), /Invalid PayPal webhook ID/);
+});
+
+test('PayPal Sandbox simulator queues only the registered staging webhook URL and capture-completed event', async () => {
+  const calls = [];
+  const paypal = createPayPal({
+    clientId: 'sandbox-client',
+    secret: 'sandbox-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v1/oauth2/token')) return response(200, { access_token: 'sandbox-access-token', expires_in: 3600 });
+      return response(202, '');
+    },
+  });
+  const result = await paypal.simulateWebhookEvent({
+    url: 'https://paypilot-ai-pg-staging.onrender.com/api/paypal/webhook',
+    eventType: 'PAYMENT.CAPTURE.COMPLETED',
+  });
+  assert.equal(result.status, 202);
+  assert.equal(calls[1].url, 'https://api-m.sandbox.paypal.com/v1/notifications/simulate-event');
+  assert.deepEqual(JSON.parse(calls[1].options.body), {
+    url: 'https://paypilot-ai-pg-staging.onrender.com/api/paypal/webhook',
+    event_type: 'PAYMENT.CAPTURE.COMPLETED',
+    resource_version: '2.0',
+  });
+  await assert.rejects(paypal.simulateWebhookEvent({
+    url: 'https://attacker.example/api/paypal/webhook',
+    eventType: 'PAYMENT.CAPTURE.COMPLETED',
+  }), /Only the registered staging/);
+});
+
+test('CRC32 implementation matches the standard check vector', () => {
+  assert.equal(crc32(Buffer.from('123456789')), 0xcbf43926);
 });

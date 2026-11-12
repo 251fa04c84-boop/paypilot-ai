@@ -1,0 +1,14 @@
+-- SUPERSEDED — DO NOT APPLY THIS MIGRATION.
+--
+-- The original grant-revocation/RLS-only approach did not constrain the live
+-- paypilot_app owner because it has BYPASSRLS and owns the reset functions.
+-- Use db/migrations/20261112_password_reset_executor.sql instead. That migration:
+--   * creates a NOLOGIN, non-superuser reset function owner;
+--   * transfers the reset tables and SECURITY DEFINER functions to that owner;
+--   * limits its grants to the columns needed for password reset and session revocation;
+--   * pins search_path to pg_catalog, pg_temp;
+--   * denies direct table access and grants EXECUTE only to paypilot_account_provisioner;
+--   * updates password_updated_at (the live staging column).
+--
+-- This file remains only as a historical reference for the earlier, incomplete
+-- attempt. It intentionally performs no SQL changes.

@@ -3,26 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#080A12">
-<title>PayPilot AI: payment recovery agent</title>
-<meta name="description" content="An AI agent for invoice recovery: it analyses overdue invoices, recommends an action, asks for your approval, runs only approved actions, verifies payments with PayPal, and keeps an audit trail.">
-<link rel="stylesheet" href="/style.css">
+<meta name="theme-color" content="#102b3b">
+<title>PayPilot — Receivables workspace</title>
+<meta name="description" content="A clear, approval-led workspace for reviewing overdue invoices and verifying PayPal Sandbox payments.">
+<link rel="stylesheet" href="/style.css?v=20261111-competitive1">
+<link rel="stylesheet" href="/polish.css?v=20261111-visual1">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to workspace</a>
 <header class="top">
-  <h1>PayPilot <span>AI</span></h1>
-  <p class="sub">Payment recovery agent · Recovery Mission Control</p>
-  <div id="status" class="status" aria-live="polite"></div>
+  <div class="brand-lockup">
+    <span class="brand-mark" aria-hidden="true">P<span>.</span></span>
+    <div class="brand-copy">
+      <h1>PayPilot</h1>
+      <p class="sub">Receivables workspace</p>
+    </div>
+    <span class="brand-edition">DEMO ENVIRONMENT</span>
+  </div>
+  <div class="header-actions"><div id="status" class="status" aria-live="polite"></div><button id="account-button" class="account-button" type="button">Sign in</button></div>
 </header>
-<main id="main" tabindex="-1"></main>
-<nav class="tabs" aria-label="Sections">
-  <button data-tab="mission" aria-current="page">Mission</button>
+<div id="auth-panel" class="auth-overlay" hidden></div>
+<nav class="tabs" aria-label="Workspace sections">
+  <button data-tab="mission" aria-current="page">Overview</button>
   <button data-tab="approvals">Approvals<span id="badge" class="count" hidden></span></button>
   <button data-tab="invoices">Invoices</button>
-  <button data-tab="assistant">AI Assistant</button>
-  <button data-tab="activity">Activity</button>
+  <button data-tab="reconcile">Reconcile</button>
+  <button data-tab="risk">Risk radar</button>
+  <button data-tab="command">Command centre</button>
+  <button data-tab="trust">Trust centre</button>
+  <button data-tab="assistant">Assistant</button>
+  <button data-tab="activity">Audit log</button>
 </nav>
+<aside class="demo-notice" role="note" aria-label="Read-only shared demo notice"><strong>Read-only judge demo:</strong> explore shared synthetic records safely; public actions are disabled and cannot change this demo. Sign in to use an isolated private workspace for interactive actions. Never enter personal, confidential, or real customer data here.</aside>
+<main id="main" tabindex="-1"></main>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="/app.js"></script>
+<script src="/app.js?v=20261111-risk1" defer></script>
 </body>
 </html>

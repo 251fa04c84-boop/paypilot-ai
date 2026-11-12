@@ -13,7 +13,7 @@ function fakePayPal(script = {}) {
       calls.capture++;
       if (script.notApproved) { const e = new Error('The buyer has not approved this order in PayPal yet.'); e.code = 'NOT_APPROVED'; throw e; }
       const inv = script.invoice();
-      return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [Object.assign({ id: 'CAP-' + id, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }, script.cap || {})] } }] };
+      return { id, status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [Object.assign({ id: 'CAP-' + id, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }, script.cap || {})] } }] };
     },
   };
 }
@@ -153,7 +153,7 @@ test('PayPal: success path verifies server-side, and repeated capture does not c
 
 test('PayPal: capture calls PayPal exactly once even when asked repeatedly', async () => {
   const pp = fakePayPal({ invoice: () => null });
-  const t = await boot({ paypal: Object.assign(pp, { captureOrder: async (id) => { pp.calls.capture++; const inv = t.app.db.invoices[0]; return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'C', status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; } }) });
+  const t = await boot({ paypal: Object.assign(pp, { captureOrder: async (id) => { pp.calls.capture++; const inv = t.app.db.invoices[0]; return { id, status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'C', status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; } }) });
   try {
     const id = (await t.call('POST', '/api/invoices', NEW)).json.id; await t.call('POST', `/api/invoices/${id}/pay`);
     const orderId = t.app.db.orders[0].orderId;
@@ -469,5 +469,21 @@ test('rate limiting ignores spoofed forwarded IP headers unless a trusted proxy 
   try {
     assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '198.51.100.10' })).status, 200);
     assert.equal((await t.call('GET', '/api/health', undefined, { 'X-Forwarded-For': '203.0.113.20' })).status, 200);
+  } finally { t.close(); }
+});
+
+test('payment reconciliation preview is read-only and requires completed provider status', async () => {
+  const t = await boot();
+  try {
+    const created = await t.call('POST', '/api/invoices', NEW);
+    const before = JSON.stringify({ invoices: t.app.db.invoices, actions: t.app.db.actions, orders: t.app.db.orders });
+    const csv = 'Invoice Number,Amount,Currency,Transaction ID,Status\nINV-1,120.50,USD,CAP-1,COMPLETED\nINV-1,120.50,USD,CAP-2,PENDING\nINV-1,120.50,USD,CAP-3,';
+    const preview = await t.call('POST', '/api/reconciliation/preview', { csv });
+    assert.equal(preview.status, 200);
+    assert.deepEqual(preview.json.results.map((x) => x.result), ['candidate', 'not_completed', 'status_missing']);
+    assert.equal(preview.json.results[0].invoiceId, created.json.id);
+    assert.match(preview.json.results[0].reason, /review candidate only/);
+    assert.equal(JSON.stringify({ invoices: t.app.db.invoices, actions: t.app.db.actions, orders: t.app.db.orders }), before);
+    assert.equal((await t.call('POST', '/api/reconciliation/preview', { csv: 'invoice,amount\\nINV-1,10' })).status, 400);
   } finally { t.close(); }
 });

@@ -1,5 +1,10 @@
 'use strict';
 const http = require('http');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const crypto = require('node:crypto');
+const { hashPassword, verifyPassword } = require('./lib/password');
+const { COOKIE_NAME, createSessionToken, readCookie, serializeSessionCookie, clearSessionCookie } = require('./lib/session');
+const { createTenantContextResolver, createJudgeDemoContext } = require('./lib/tenant-context');
 const fs = require('fs');
 const path = require('path');
 const { createStore, addAction, newId, closeDrafts, closeProposals } = require('./lib/store');
@@ -9,37 +14,76 @@ const { createPayPal } = require('./lib/paypal');
 const { generateDraft, generateText } = require('./lib/ai');
 const { ACTIONS, APPROVAL_TTL_MS, evaluate, plan, snapshotHash, buildInterpretationPrompt, validateInterpretation, portfolioTriage, processAssistantQuery } = require('./lib/agent');
 const { summarize } = require('./lib/summary');
+const { reconcile } = require('./lib/reconciliation');
+const { assessPortfolioRisk } = require('./lib/risk-intelligence');
+const { detectPaymentAnomalies, simulateRecovery } = require('./lib/ops-intelligence');
+const { buildTrustStatus } = require('./lib/trust-status');
+const { runSafetyLab } = require('./lib/safety-lab');
 const { createLimiter } = require('./lib/ratelimit');
+const { createPostgresRepository, createPgPool } = require('./lib/postgres-repository');
+const { createPostgresStore } = require('./lib/postgres-store');
+const { createResendEmailProvider, createBrevoEmailProvider } = require('./lib/email');
 
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 class HttpError extends Error { constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; } }
+const DUMMY_PASSWORD_HASH = 'scrypt$16384$8$1$a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1$fc1cf39d547631f7157d87d05fc10779d8b63fffd155dd69944bbacf72e795c6b117e725e8b72e02ef1576a4ccdc8f911bace325beaa7320278b75a3effdefd1';
 
 function createApp(opts = {}) {
+  const requestContext = new AsyncLocalStorage();
   const env = opts.env || process.env;
   const isProduction = env.NODE_ENV === 'production' || env.RENDER === 'true';
   const port = Number(env.PORT) || 3000;
   const baseUrl = (env.APP_BASE_URL || env.RENDER_EXTERNAL_URL || `http://localhost:${port}`).replace(/\/$/, '');
   const now = opts.now || (() => new Date());
-  const store = opts.store || createStore(env.DATA_FILE || path.join(__dirname, 'data', 'db.json'));
+  const pgMode = env.PG_STORAGE_MODE === 'judge_demo' || Boolean(opts.repository);
+  const pgTenantId = opts.tenantId || env.JUDGE_DEMO_TENANT_ID || '';
+  if (pgMode && !pgTenantId.trim()) throw new Error('JUDGE_DEMO_TENANT_ID is required in PostgreSQL judge-demo mode.');
+  const adminPool = opts.adminPool || (env.ACCOUNT_PROVISIONING_DATABASE_URL ? createPgPool({ connectionString: env.ACCOUNT_PROVISIONING_DATABASE_URL, max: 2 }) : null);
+  const repository = pgMode
+    ? (opts.repository || createPostgresRepository({ pool: opts.pgPool || createPgPool({ connectionString: env.DATABASE_URL }), adminPool }))
+    : null;
+  const sessionSecret = env.SESSION_SECRET || '';
+  const authEnabled = Boolean(pgMode && Buffer.byteLength(sessionSecret, 'utf8') >= 32 && repository && repository.accountsEnabled === true && ['createAccount', 'findUserByEmail', 'createSession', 'resolveSession', 'revokeSession', 'checkAccountProvisioning'].every((name) => typeof repository[name] === 'function'));
+  const resolveTenantContext = authEnabled ? createTenantContextResolver({ repository, secret: sessionSecret, now: () => Date.now() }) : null;
+  const judgeContext = pgMode ? createJudgeDemoContext(pgTenantId) : null;
+  const store = opts.store || (pgMode
+    ? createPostgresStore({ repository, tenantId: pgTenantId })
+    : createStore(env.DATA_FILE || path.join(__dirname, 'data', 'db.json')));
   const db = store.db;
-  db.processedWebhookEvents = Array.isArray(db.processedWebhookEvents) ? db.processedWebhookEvents : [];
+  if (!pgMode) db.processedWebhookEvents = Array.isArray(db.processedWebhookEvents) ? db.processedWebhookEvents : [];
   const paypal = opts.paypal || createPayPal({ clientId: env.PAYPAL_CLIENT_ID, secret: env.PAYPAL_CLIENT_SECRET });
   const aiFetch = opts.aiFetch || fetch;
   const aiKey = env.GEMINI_API_KEY || '';
   const aiModel = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const sender = env.SENDER_NAME || 'Accounts team';
+  const emailOptions = { from: env.EMAIL_FROM, appBaseUrl: baseUrl, fetchImpl: opts.emailFetch || fetch };
+  const emailProvider = opts.emailProvider || (env.BREVO_API_KEY
+    ? createBrevoEmailProvider({ ...emailOptions, apiKey: env.BREVO_API_KEY })
+    : createResendEmailProvider({ ...emailOptions, apiKey: env.RESEND_API_KEY }));
   // Global demo controls mutate the shared demo database; keep them off in production unless explicitly enabled.
   // Demo-admin controls are development-only. An environment flag must never enable simulated payment settlement in production.
   const demoAdminEnabled = !isProduction && env.ENABLE_DEMO_ADMIN !== 'false';
   // Public judge workflows mutate the shared demo database. Require an explicit production opt-in.
   // Keep verified PayPal callbacks available even when browser-facing demo mutations are disabled.
   const publicDemoMutationsEnabled = env.ENABLE_PUBLIC_DEMO_MUTATIONS === 'true' || (!isProduction && env.ENABLE_PUBLIC_DEMO_MUTATIONS !== 'false');
+  const webhookSimulatorEnabled = isProduction && baseUrl === 'https://paypilot-ai-pg-staging.onrender.com' && env.PAYPAL_WEBHOOK_SIMULATOR_ENABLED === 'true';
+  let webhookSimulatorTriggered = false;
   const inflight = new Set();
   const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
-  const settings = (db.settings = db.settings || {});
+  const settings = pgMode
+    ? new Proxy(Object.create(null), {
+      get(_target, key) { return db.settings[key]; },
+      set(_target, key, value) { db.settings[key] = value; return true; },
+      ownKeys() { return Reflect.ownKeys(db.settings); },
+      getOwnPropertyDescriptor(_target, key) {
+        if (!Object.prototype.hasOwnProperty.call(db.settings, key)) return undefined;
+        return { configurable: true, enumerable: true, writable: true, value: db.settings[key] };
+      }
+    })
+    : (db.settings = db.settings || {});
   let aiLast = null; // last real AI call outcome, shown as a service-health indicator
   const simFetch = async () => ({ ok: false, status: 503, json: async () => ({ error: { message: 'SIMULATED outage (demo switch)' } }) });
   const simPaypal = { configured: () => true, async createOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); }, async captureOrder() { throw new Error('PayPal service unavailable (SIMULATED outage, demo switch).'); } };
@@ -53,6 +97,8 @@ function createApp(opts = {}) {
     draftIp: createLimiter({ windowMs: 60000, max: lim.draftIp || 5 }),
     draftAll: createLimiter({ windowMs: 60000, max: lim.draftAll || 8 }),
     pay: createLimiter({ windowMs: 60000, max: lim.pay || 20 }),
+    authIp: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.authIp || 12 }),
+    authIdentity: createLimiter({ windowMs: 15 * 60 * 1000, max: lim.authIdentity || 6 }),
   };
   // Never trust client-supplied X-Forwarded-For by default: it is trivial to spoof and bypass IP limits.
 // Enable TRUST_PROXY=true only when the hosting proxy is configured to overwrite this header.
@@ -74,7 +120,7 @@ function createApp(opts = {}) {
   const find = (list, id, label) => { const x = list.find((i) => i.id === id); if (!x) throw new HttpError(404, `${label} not found.`); return x; };
   const withA = (inv) => Object.assign({}, inv, { assessment: P.assess(inv, todayStr()) });
   const requireMutableDemo = () => {
-    if (isProduction) throw new HttpError(403, 'Invoice editing is disabled on the public demo. Use the supplied judge scenarios.');
+    if (isProduction && requestContext.getStore()?.kind !== 'private') throw new HttpError(403, 'Invoice editing is disabled on the shared public demo. Sign in to use a private workspace.');
   };
 
   function cleanInvoice(b, base = {}) {
@@ -117,7 +163,7 @@ function createApp(opts = {}) {
     }
   }
 
-  async function capture(orderId) {
+  async function capture(orderId, { readOnly = false } = {}) {
     if (typeof orderId !== 'string' || !/^[A-Za-z0-9-]{5,40}$/.test(orderId)) throw new HttpError(400, 'Invalid order id.');
     const rec = db.orders.find((o) => o.orderId === orderId);
     if (!rec) throw new HttpError(404, 'Unknown order. Only orders created by this app can be captured.');
@@ -131,7 +177,7 @@ function createApp(opts = {}) {
       if (!invoice) throw new HttpError(409, 'The invoice no longer exists. No new capture was attempted.');
       let order;
       const mayInitiateCapture = invoice.status === 'open' && !invoice.disputed;
-      if (mayInitiateCapture) {
+      if (mayInitiateCapture && !readOnly) {
         try { order = await ppNow().captureOrder(orderId); }
         catch (e) { if (e.code === 'NOT_APPROVED') throw new HttpError(409, e.message); throw new HttpError(502, e.message); }
       } else {
@@ -140,7 +186,7 @@ function createApp(opts = {}) {
         if (typeof ppNow().getOrder !== 'function') throw new HttpError(409, 'Invoice state blocks capture. No new capture was attempted.');
         try { order = await ppNow().getOrder(orderId); }
         catch (_) { throw new HttpError(502, 'Could not verify the existing PayPal order. No new capture was attempted.'); }
-        const verification = verifyCapture(order, invoice);
+        const verification = verifyCapture(order, invoice, orderId);
         if (!verification.ok && !verification.pending) {
           const reason = invoice.disputed ? 'The invoice is disputed' : 'The invoice is ' + invoice.status;
           addAction(db, { invoiceId: invoice.id, type: invoice.disputed ? 'capture_blocked_dispute' : 'capture_blocked_invoice_state', detail: reason + '. PayPilot did not initiate a new PayPal capture for order ' + orderId + '.' }, iso());
@@ -182,7 +228,110 @@ function createApp(opts = {}) {
     routes.push({ method, re, keys, handler });
   };
 
-  route('GET', '/api/health', () => ({ json: { ok: true, today: todayStr(), mode: 'restricted demo: no login, demo data only', storage: 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } }));
+  route('POST', '/api/auth/register', async ({ body, req }) => {
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const normalizedEmail = email.toLowerCase();
+    const password = body.password;
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Enter a valid email address.');
+    if (typeof password !== 'string' || password.length < 12 || password.length > 128) throw new HttpError(400, 'Password must be between 12 and 128 characters.');
+    const ip = clientIp(req);
+    const a = L.authIp.hit(ip);
+    const b = L.authIdentity.hit('register:' + normalizedEmail);
+    if (!a.ok || !b.ok) throw new HttpError(429, 'Too many account attempts. Try again later.', { retryAfter: Math.max(a.retryAfter || 0, b.retryAfter || 0) });
+    const passwordHash = await hashPassword(password);
+    let user;
+    try {
+      user = await repository.createAccount({ tenantId: 'acct_' + crypto.randomUUID(), email, normalizedEmail, passwordHash });
+    } catch (error) {
+      if (error.code === 'ACCOUNT_EXISTS') throw new HttpError(409, 'An account with that email already exists.');
+      throw error;
+    }
+    const session = createSessionToken({ secret: sessionSecret });
+    await repository.createSession({ sessionHash: session.sessionHash, tenantId: user.tenantId, userId: user.userId, expiresAt: session.expiresAt });
+    return { status: 201, setCookie: serializeSessionCookie(session.token, { secure: isProduction }), json: { user: { id: user.userId, email: user.email } } };
+  });
+
+  route('POST', '/api/auth/login', async ({ body, req }) => {
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const ip = clientIp(req);
+    const a = L.authIp.hit(ip);
+    const b = L.authIdentity.hit('login:' + (email.slice(0, 254) || 'missing'));
+    if (!a.ok || !b.ok) throw new HttpError(429, 'Too many login attempts. Try again later.', { retryAfter: Math.max(a.retryAfter || 0, b.retryAfter || 0) });
+    if (!email || email.length > 254 || password.length > 128) throw new HttpError(401, 'Email or password is incorrect.');
+    const user = await repository.findUserByEmail(email);
+    const passwordMatches = await verifyPassword(password, user ? user.passwordHash : DUMMY_PASSWORD_HASH);
+    if (!user || !passwordMatches) throw new HttpError(401, 'Email or password is incorrect.');
+    const session = createSessionToken({ secret: sessionSecret });
+    await repository.createSession({ sessionHash: session.sessionHash, tenantId: user.tenantId, userId: user.userId, expiresAt: session.expiresAt });
+    return { setCookie: serializeSessionCookie(session.token, { secure: isProduction }), json: { user: { id: user.userId, email: user.email } } };
+  });
+
+  route('POST', '/api/auth/logout', async ({ headers }) => {
+    if (authEnabled) {
+      const context = await resolveTenantContext(headers);
+      if (context) await repository.revokeSession(context.sessionHash, context.tenantId);
+    }
+    return { setCookie: clearSessionCookie({ secure: isProduction }), json: { loggedOut: true } };
+  });
+
+  route('POST', '/api/auth/password/forgot', async ({ body, req }) => {
+    if (!authEnabled || !emailProvider.configured || typeof repository.createPasswordReset !== 'function') {
+      throw new HttpError(503, 'Password recovery is not configured yet. Please contact support.');
+    }
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    if (email.length > 254 || !email.includes('@') || email.indexOf('@') !== email.lastIndexOf('@') || !email.slice(email.lastIndexOf('@') + 1).includes('.')) throw new HttpError(400, 'Enter a valid email address.');
+    const ip = clientIp(req);
+    const a = L.authIp.hit('forgot:' + ip);
+    const b = L.authIdentity.hit('forgot:' + email.toLowerCase());
+    if (!a.ok || !b.ok) throw new HttpError(429, 'Too many password recovery attempts. Try again later.', { retryAfter: Math.max(a.retryAfter || 0, b.retryAfter || 0) });
+    const token = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const recipient = await repository.createPasswordReset({ email, tokenHash, expiresAt });
+    if (recipient) {
+      try {
+        await emailProvider.sendPasswordReset({ to: recipient, token });
+      } catch (error) {
+        if (typeof repository.invalidatePasswordReset === 'function') {
+          try { await repository.invalidatePasswordReset(tokenHash); } catch (_) {}
+        }
+        throw new HttpError(502, 'Password recovery email could not be sent. Please try again later.');
+      }
+    }
+    return { status: 202, json: { message: 'If an account exists for that email, a password reset link will be sent.' } };
+  });
+
+  route('POST', '/api/auth/password/reset', async ({ body, req }) => {
+    if (!authEnabled || typeof repository.completePasswordReset !== 'function') throw new HttpError(503, 'Password recovery is not configured yet.');
+    const token = typeof body.token === 'string' ? body.token : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) throw new HttpError(400, 'This password reset link is invalid or expired.');
+    if (password.length < 12 || password.length > 128) throw new HttpError(400, 'Password must be between 12 and 128 characters.');
+    const ip = clientIp(req);
+    const a = L.authIp.hit('reset:' + ip);
+    if (!a.ok) throw new HttpError(429, 'Too many password reset attempts. Try again later.', { retryAfter: a.retryAfter || 0 });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const passwordHash = await hashPassword(password);
+    const completed = await repository.completePasswordReset({ tokenHash, passwordHash, now: new Date() });
+    if (!completed) throw new HttpError(400, 'This password reset link is invalid or expired.');
+    return { json: { passwordReset: true, message: 'Password updated. Please sign in again.' } };
+  });
+
+  route('GET', '/api/auth/me', async ({ headers }) => {
+    if (!authEnabled || !(await repository.checkAccountProvisioning())) throw new HttpError(503, 'Private accounts are not ready. Check the provisioning database grants and SESSION_SECRET.');
+    const context = await resolveTenantContext(headers);
+    if (!context) throw new HttpError(401, 'Sign in to access your account.');
+    return { json: { user: { id: context.userId } } };
+  });
+
+  route('GET', '/api/health', async () => {
+    let accountsReady = false;
+    if (authEnabled) { try { accountsReady = await repository.checkAccountProvisioning(); } catch (_) { accountsReady = false; } }
+    return { json: { ok: true, today: todayStr(), mode: accountsReady ? 'shared judge demo + private accounts when signed in' : 'restricted shared judge demo', storage: pgMode ? 'postgresql (tenant-scoped)' : 'json-file (not durable on free hosting)', ai: { configured: Boolean(aiKey), provider: aiKey ? `Google Gemini (${aiModel})` : null, last: aiLast }, paypal: { configured: paypal.configured(), environment: 'sandbox' }, auth: { enabled: accountsReady, configured: authEnabled, sessionTtlSeconds: 604800 }, email: { configured: Boolean(emailProvider.configured), provider: emailProvider.configured ? emailProvider.provider : null }, demo: { simulateAi: Boolean(settings.simulateAi), simulatePaypal: Boolean(settings.simulatePaypal), adminControlsEnabled: demoAdminEnabled, publicMutationsEnabled: publicDemoMutationsEnabled } } };
+  });
   route('GET', '/api/invoices', () => ({ json: db.invoices.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(withA) }));
   route('POST', '/api/invoices', ({ body }) => {
     requireMutableDemo();
@@ -238,6 +387,59 @@ function createApp(opts = {}) {
     return { json: q.map((a) => ({ assessment: a, invoice: db.invoices.find((i) => i.id === a.invoiceId) })) };
   });
   route('GET', '/api/summary', () => ({ json: summarize(db.invoices, todayStr()) }));
+  route('GET', '/api/risk/portfolio', () => ({ json: assessPortfolioRisk(db.invoices, db.orders, todayStr()) }));
+  route('GET', '/api/intelligence/overview', () => {
+    const risk = assessPortfolioRisk(db.invoices, db.orders, todayStr());
+    const anomalies = detectPaymentAnomalies(db.invoices, db.orders, Date.parse(iso()));
+    return { json: { generatedAt: iso(), risk, anomalies, mode: 'read_only_deterministic' } };
+  });
+  route('GET', '/api/safety-lab', () => ({ json: runSafetyLab(Date.parse(iso())) }));
+  route('GET', '/api/recovery/simulate', ({ query }) => {
+    const invoice = db.invoices.find((i) => i.id === query.invoiceId);
+    if (!invoice) throw new HttpError(404, 'Invoice not found in this workspace.');
+    const risk = assessPortfolioRisk(db.invoices, db.orders, todayStr());
+    const row = risk.items.find((i) => i.invoiceId === invoice.id);
+    return { json: simulateRecovery({ invoice, action: query.action, today: todayStr(), riskSignals: row ? row.signals : [], orders: db.orders }) };
+  });
+  route('GET', '/api/trust', async () => {
+    const passwordResetIsolation = Boolean(
+      pgMode && repository &&
+      typeof repository.checkPasswordResetIsolation === 'function' &&
+      await repository.checkPasswordResetIsolation()
+    );
+    const trust = buildTrustStatus({
+      pgMode,
+      authEnabled,
+      webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
+      aiConfigured: Boolean(aiKey),
+      emailConfigured: Boolean(emailProvider.configured),
+      publicDemoMutationsEnabled,
+      webhookSimulatorVerified: Boolean(settings.webhookSimulatorVerifiedAt),
+      webhookDeliveryVerified: Boolean(settings.webhookDeliveryVerifiedAt),
+      passwordResetIsolation,
+    });
+    return { json: {
+      environment: 'PayPal Sandbox only',
+      webhookSimulatorVerifiedAt: settings.webhookSimulatorVerifiedAt || null,
+      webhookDeliveryVerifiedAt: settings.webhookDeliveryVerifiedAt || null,
+      storage: pgMode ? 'PostgreSQL tenant-scoped' : 'JSON file — not durable on free hosting',
+      controls: trust.controls,
+      boundaries: [
+        'AI output cannot set invoice status or bypass approval.',
+        'Payment settlement requires server-side PayPal capture verification or a verified signed webhook.',
+        'Disputed and non-open invoices are blocked from new checkout actions.',
+        'CSV reconciliation and risk analysis are read-only.',
+        'Recovery simulation never creates orders, approvals, proposals or audit events.',
+        'Credentials and secret values are never returned by this endpoint.',
+      ],
+      caveats: trust.caveats,
+    } };
+  });
+  route('POST', '/api/reconciliation/preview', ({ body }) => {
+    if (typeof body.csv !== 'string') throw new HttpError(400, 'Provide CSV text in the csv field.');
+    try { return { json: { mode: 'preview_only', results: reconcile(body.csv, db.invoices) } }; }
+    catch (error) { throw new HttpError(400, error.message); }
+  });
   route('GET', '/api/actions', () => ({ json: db.actions.slice(-100).reverse() }));
   route('GET', '/api/actions/export', ({ query }) => {
     const format = (query.format || 'csv').toLowerCase();
@@ -322,6 +524,7 @@ function createApp(opts = {}) {
     const resource = body && body.resource;
     const eventId = body && body.id;
     if (!event || !resource || typeof eventId !== 'string' || !eventId.trim()) throw new HttpError(400, 'Invalid PayPal webhook payload.');
+    console.log('PayPal webhook received:', eventId, event);
     if (!env.PAYPAL_WEBHOOK_ID || !paypal.configured() || typeof paypal.verifyWebhookSignature !== 'function') {
       throw new HttpError(503, 'PayPal webhook verification is not configured. Set PAYPAL_WEBHOOK_ID and valid Sandbox credentials.');
     }
@@ -336,9 +539,37 @@ function createApp(opts = {}) {
     };
     if (Object.values(signature).some((v) => v == null || v === '')) throw new HttpError(401, 'Required PayPal webhook signature headers are missing.');
     let verified = false;
+    let verificationError = null;
     try { verified = await paypal.verifyWebhookSignature(signature); }
-    catch (_) { throw new HttpError(503, 'PayPal could not verify the webhook right now. The event can be retried.'); }
+    catch (error) { verificationError = error; }
+
+    // PayPal mock simulator events cannot be checked through the postback API.
+    // During the explicitly enabled staging test window only, verify the exact raw
+    // payload locally with PayPal's special WEBHOOK_ID and return before settlement.
+    if (!verified && webhookSimulatorEnabled && typeof paypal.verifySimulatorWebhookSignature === 'function') {
+      const simulatorVerified = await paypal.verifySimulatorWebhookSignature({
+        authAlgo: signature.authAlgo,
+        certUrl: signature.certUrl,
+        transmissionId: signature.transmissionId,
+        transmissionSig: signature.transmissionSig,
+        transmissionTime: signature.transmissionTime,
+        rawBody: body.__rawBody,
+      });
+      console.log('PayPal simulator signature result:', simulatorVerified, eventId);
+      if (simulatorVerified) {
+        settings.webhookSimulatorVerifiedAt = iso();
+        settings.webhookSimulatorEventId = eventId;
+        settings.webhookSimulatorEventType = event;
+        await store.save();
+        return { json: { received: true, verified: true, simulation: true, eventId, eventType: event } };
+      }
+    }
+    if (!verified && verificationError) throw new HttpError(503, 'PayPal could not verify the webhook right now. The event can be retried.');
     if (!verified) throw new HttpError(401, 'PayPal webhook signature verification failed.');
+    settings.webhookDeliveryVerifiedAt = iso();
+    settings.webhookLastVerifiedEventId = eventId;
+    settings.webhookLastVerifiedEventType = event;
+    await store.save();
     const cutoff = Date.parse(iso()) - 30 * 86400000;
     db.processedWebhookEvents = db.processedWebhookEvents
       .filter((x) => x && typeof x.id === 'string' && Date.parse(x.at) >= cutoff)
@@ -368,7 +599,7 @@ function createApp(opts = {}) {
       addAction(db, { invoiceId: rec.invoiceId, type: 'webhook_received', detail: `PayPal webhook verified: ${event} for order ${orderId}.` }, iso());
       let captureResult = null;
       if (event === 'CHECKOUT.ORDER.APPROVED' || event === 'PAYMENT.CAPTURE.COMPLETED') {
-        captureResult = await capture(orderId);
+        captureResult = await capture(orderId, { readOnly: event === 'PAYMENT.CAPTURE.COMPLETED' });
       }
       db.processedWebhookEvents.push({ id: eventId, at: iso() });
       store.save();
@@ -393,6 +624,7 @@ function createApp(opts = {}) {
       const inv = db.invoices.find((i) => i.id === rec.invoiceId);
       if (inv && inv.demo) {
         const mockOrder = {
+          id: orderId,
           status: 'COMPLETED',
           purchase_units: [{
             reference_id: inv.id,
@@ -724,8 +956,13 @@ function createApp(opts = {}) {
       req.on('end', () => {
         if (tooLarge) return;
         if (!chunks.length) return resolve({});
-        try { const v = JSON.parse(Buffer.concat(chunks).toString('utf8')); resolve(v && typeof v === 'object' ? v : {}); }
-        catch (_) { reject(new HttpError(400, 'Invalid JSON.')); }
+        const rawBody = Buffer.concat(chunks).toString('utf8');
+        try {
+          const parsed = JSON.parse(rawBody);
+          const value = parsed && typeof parsed === 'object' ? parsed : {};
+          Object.defineProperty(value, '__rawBody', { value: rawBody, enumerable: false });
+          resolve(value);
+        } catch (_) { reject(new HttpError(400, 'Invalid JSON.')); }
       });
       req.on('error', (e) => { if (!tooLarge) reject(e); });
     });
@@ -767,14 +1004,43 @@ function createApp(opts = {}) {
           }
         }
       }
-      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
-        throw new HttpError(403, 'Interactive demo actions are disabled on this public deployment.');
-      }
       const blocked = checkLimits(req, url.pathname);
       if (blocked) throw new HttpError(429, 'Too many requests. Please wait a moment and try again.', { retryAfter: blocked.retryAfter });
       const params = {}; m.r.keys.forEach((k, i) => { params[k] = m.x[i + 1]; });
       const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
-      const out = await m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams) });
+      const authPath = url.pathname.startsWith('/api/auth/');
+      let tenantContext = judgeContext;
+      const invoke = () => requestContext.run(tenantContext, () => m.r.handler({ params, body, headers: req.headers, query: Object.fromEntries(url.searchParams), req }));
+      if (pgMode && !authPath && url.pathname !== '/api/paypal/webhook') {
+        const sessionCookie = readCookie(req.headers.cookie || '', COOKIE_NAME);
+        if (sessionCookie) {
+          if (!authEnabled) throw new HttpError(401, 'This session cannot be used on this deployment.');
+          tenantContext = await resolveTenantContext(req.headers);
+          if (!tenantContext) throw new HttpError(401, 'Session is invalid or expired. Sign in again.');
+        }
+      }
+      // PayPal callbacks carry no browser session. Route them to the tenant that owns
+      // the opaque order ID; the handler still verifies PayPal's signature before writes.
+      if (pgMode && url.pathname === '/api/paypal/webhook') {
+        const event = body && body.event_type;
+        const resource = body && body.resource;
+        let orderId = resource && resource.id;
+        const related = resource && resource.supplementary_data && resource.supplementary_data.related_ids;
+        if (typeof event === 'string' && event.startsWith('PAYMENT.CAPTURE.') && related && related.order_id) orderId = related.order_id;
+        if (typeof orderId === 'string' && repository && typeof repository.findOrderRoute === 'function') {
+          const route = await repository.findOrderRoute(orderId);
+          if (route && typeof route.tenant_id === 'string') {
+            tenantContext = Object.freeze({ tenantId: route.tenant_id, kind: route.tenant_id === pgTenantId ? 'judge_demo' : 'private' });
+          }
+        }
+      }
+      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !authPath && (!tenantContext || tenantContext.kind !== 'private') && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
+        throw new HttpError(403, 'Interactive judge-demo actions are disabled on this deployment.');
+      }
+      // No cookie means the explicitly configured judge demo. A valid cookie means
+      // private data is loaded only from the tenant resolved by the signed session.
+      const out = pgMode && !authPath ? await store.runInTenant(invoke, tenantContext.tenantId) : await invoke();
+      if (out.setCookie) res.setHeader('Set-Cookie', out.setCookie);
       if (out.redirect) { res.writeHead(302, { Location: out.redirect }); return res.end(); }
       if (out.html) { res.writeHead(out.status || 200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(out.html); }
       if (out.csv) {
@@ -795,17 +1061,62 @@ function createApp(opts = {}) {
       res.end(JSON.stringify(Object.assign({ error: status === 500 ? 'Internal error.' : e.message }, e.extra || {})));
     }
   });
-  return { server, port, db, store, seedDemo };
+  async function runWebhookSimulator() {
+    if (!webhookSimulatorEnabled || env.PAYPAL_WEBHOOK_SIMULATOR_ON_START !== 'true' ||
+        webhookSimulatorTriggered) return null;
+    if (typeof paypal.simulateWebhookEvent !== 'function') throw new Error('PayPal Sandbox simulator client is unavailable.');
+    webhookSimulatorTriggered = true;
+    if (typeof paypal.getWebhook !== 'function') throw new Error('PayPal Sandbox webhook lookup is unavailable.');
+    const webhook = await paypal.getWebhook(env.PAYPAL_WEBHOOK_ID);
+    const expectedUrl = baseUrl + '/api/paypal/webhook';
+    if (!webhook || webhook.url !== expectedUrl) {
+      throw new Error('The registered PayPal Sandbox webhook URL does not match the staging callback.');
+    }
+    const subscribedEvents = Array.isArray(webhook.event_types) ? webhook.event_types.map((item) => item && item.name) : [];
+    if (!subscribedEvents.includes('PAYMENT.CAPTURE.COMPLETED')) {
+      throw new Error('The registered PayPal Sandbox webhook is not subscribed to PAYMENT.CAPTURE.COMPLETED.');
+    }
+    const result = await paypal.simulateWebhookEvent({
+      url: expectedUrl,
+      eventType: 'PAYMENT.CAPTURE.COMPLETED',
+    });
+    console.log('PayPal Sandbox webhook simulator queued:', result.status, result.data && result.data.id || 'no event id in response');
+    return result;
+  }
+
+  return { server, port, db, store, seedDemo, pgMode, repository, runWebhookSimulator };
 }
 
 if (require.main === module) {
   const app = createApp();
-  if (app.db.invoices.length === 0) {
-    try {
-      app.seedDemo();
-      console.log('Startup: Automatically seeded demo invoices for judge review.');
-    } catch (_) {}
-  }
-  app.server.listen(app.port, () => console.log(`PayPilot AI listening on port ${app.port}`));
+  (async () => {
+    if (app.pgMode) {
+      // The judge tenant must be provisioned by an administrator before boot.
+      await app.store.runInTenant(async () => {
+        if (app.db.invoices.length === 0) {
+          app.seedDemo();
+          console.log('Startup: Seeded PostgreSQL judge-demo tenant.');
+        }
+      });
+    } else if (app.db.invoices.length === 0) {
+      try {
+        app.seedDemo();
+        console.log('Startup: Automatically seeded demo invoices for judge review.');
+      } catch (_) {}
+    }
+    app.server.listen(app.port, () => {
+      console.log(`PayPilot AI listening on port ${app.port}`);
+      app.runWebhookSimulator().catch((error) => console.error('PayPal Sandbox webhook simulator failed:', error.message));
+    });
+  })().catch((error) => {
+    console.error('Startup failed:', error.message);
+    process.exitCode = 1;
+  });
+  const shutdown = async () => {
+    if (app.server.listening) await new Promise((resolve) => app.server.close(resolve));
+    if (app.store && typeof app.store.close === 'function') await app.store.close();
+  };
+  process.once('SIGTERM', () => { shutdown().catch((error) => console.error('Shutdown failed:', error.message)); });
+  process.once('SIGINT', () => { shutdown().catch((error) => console.error('Shutdown failed:', error.message)); });
 }
 module.exports = { createApp };

@@ -4,14 +4,20 @@ on:
   push:
     branches: ["main", "codex/**", "competition/**"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "codex/paypilot-human-crafted-ui", "codex/paypilot-real-postgres-staging"]
 
 permissions:
   contents: read
 
+concurrency:
+  group: paypilot-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Node 22 test suite
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -19,5 +25,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run test suite
+      - name: Check server and browser JavaScript syntax
+        run: node --check server.js && node --check public/app.js && node --check lib/email.js
+      - name: Run complete test suite
         run: npm test

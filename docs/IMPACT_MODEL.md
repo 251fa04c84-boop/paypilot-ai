@@ -22,7 +22,7 @@ These sources support the importance of the problem; they do **not** prove that 
 | Too many invoices to review manually | Portfolio queue with a deterministic, explainable urgency heuristic | Live demo queue and score rationale |
 | Generic chasing can damage client relationships | Wait after a recent reminder; keep disputed invoices out of active collection | Greenleaf wait recommendation; Harbor Dental dispute pause |
 | Operators cannot tell whether an AI suggestion is safe | Facts, rules, uncertainty and optional AI commentary are separated | Invoice analysis and approval screens |
-| An order can be mistaken for payment | Server verifies PayPal capture status, invoice reference, amount and currency | Acme Studio D-1001 Sandbox capture and audit trail |
+| An order can be mistaken for payment | Server verifies PayPal capture status, invoice reference, amount and currency | Safety Lab accepts exact capture fixtures and rejects pending/mismatched evidence; current live staging has zero verified captures |
 | Decisions are hard to reconstruct | Approval, execution, verification and blocking events are logged | Invoice timeline and Activity export |
 
 ## What has been demonstrated — and what has not
@@ -31,17 +31,17 @@ These sources support the importance of the problem; they do **not** prove that 
 - A portfolio of labelled demo invoices can be prioritised using deterministic rules.
 - Disputed and already-paid invoices are protected from collection actions.
 - A human must approve the exact proposed action.
-- A PayPal Sandbox buyer-approved order for Acme Studio D-1001 ($1,200 USD) was captured and verified server-side on 8 November 2026.
-- The decision and payment outcome are visible in the audit trail.
+- The deterministic Safety Lab exercises completed, pending, wrong-invoice, amount-mismatch, currency-mismatch, wrong-order-ID, multiple-purchase-unit, multiple-capture and missing-capture-ID cases.
+- The current live staging snapshot shows Acme Studio D-1001 ($1,200 USD) still open and **zero PayPal-verified captures**. A previously reported Sandbox test is not reflected in the current staging ledger and is not presented as current live evidence.
 
 **Not demonstrated:**
 - A reduction in real businesses' days-sales-outstanding (DSO).
 - A higher recovery rate or faster payment caused by PayPilot.
 - Hours saved for a real operator.
 - Live customer usage, customer satisfaction or willingness to pay.
-- Production readiness, tenant isolation or durable storage.
+- Production readiness or independent security certification. Tenant isolation and cross-connection persistence are covered by CI, but the live password-reset database-owner privilege issue remains unresolved.
 
-The $1,200 Sandbox capture is test money and is not revenue or a real customer recovery.
+Any Sandbox capture is test money, not revenue or a real customer recovery. Do not count a pending order, a historical test, or a Safety Lab fixture as a currently verified capture.
 
 ## Pilot measurement plan
 

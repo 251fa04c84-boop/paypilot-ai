@@ -1,19 +1,20 @@
 # PayPilot AI — an auditable agent for invoice recovery
 
-**Live demo:** https://paypilot-ai-1qw8.onrender.com/  
+**Live staging demo (PostgreSQL-backed):** https://paypilot-ai-pg-staging.onrender.com/  
+**Separate original production service (not updated by this staging work):** https://paypilot-ai-1qw8.onrender.com/  
 **Source:** https://github.com/251fa04c84-boop/paypilot-ai  
 **Hackathon:** PayPal AI Hackathon 2026
 
 PayPilot AI is an evidence-first receivables recovery agent for small businesses. It turns a scattered invoice list into a prioritised, explainable recovery plan: deterministic rules identify which accounts need attention, Gemini can translate the evidence into plain language, a human approves the exact next action, and PayPal Sandbox confirms whether money was actually captured. Every decision and outcome is traceable.
 
 > **Sandbox only:** the PayPal API endpoint is fixed to PayPal Sandbox. This demo cannot move real money.  
-> **Restricted demo:** there is no login or tenant isolation. Production browser-facing mutations are disabled by default; set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` only when intentionally opening the shared judge workflow. Invoice create/edit/delete/manual settlement remain disabled in production regardless. Verified PayPal capture and signed webhook endpoints remain available. Use only included demo data; do not enter real customer or financial information.  
-> **Storage:** invoice and audit data use a local JSON file. On ephemeral/free hosting, data can reset when the service restarts. This is a hackathon demo, not a production accounting system.
+> **Judge demo:** the public judge workflow remains a shared, no-login demo tenant unless private accounts are explicitly configured. Private account endpoints use scrypt password hashes, signed HttpOnly sessions and session-resolved tenant routing; they remain disabled unless `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID`, `ACCOUNT_PROVISIONING_DATABASE_URL` and a strong `SESSION_SECRET` are configured and `/api/health` reports `auth.enabled: true`. Do not assume private accounts are enabled on a deployed service until that health field is verified. Production browser-facing mutations for the shared demo remain disabled by default. Use demo data only until a real customer deployment has been security-reviewed.  
+> **Deployment distinction:** the staging demo is deployed from `codex/paypilot-real-postgres-staging` and reports PostgreSQL tenant-scoped storage. The original production service is separate and was not modified. The public staging judge demo uses shared synthetic records but is now **read-only**; public mutations are disabled. Private accounts use signed sessions and tenant-scoped PostgreSQL when enabled. This is a hackathon demo, not production accounting software.
 
 ### Public demo mutation switch
 
 - Production defaults to read-only for browser-facing state changes because all visitors otherwise share one database.
-- To enable the interactive judge walkthrough, explicitly set `ENABLE_PUBLIC_DEMO_MUTATIONS=true` in the hosting environment and restart/redeploy. This enables shared demo actions such as drafts, approvals, proposals and demo seeding; it does **not** enable invoice CRUD or demo-admin simulation controls.
+- Keep `ENABLE_PUBLIC_DEMO_MUTATIONS=false` on the public judge service. The current staging service is configured read-only. Only enable this flag in an isolated test environment where shared synthetic records may be changed; it does **not** enable invoice CRUD or demo-admin simulation controls.
 - Keep it unset/false when the app is not being actively demonstrated. This is a temporary judge-demo control, not a substitute for authentication or tenant isolation.
 
 ## What makes PayPilot different
@@ -26,8 +27,23 @@ Most invoice tools stop at reminders, and most chat interfaces stop at suggestio
 - **Human authority at the point of action:** the operator reviews the exact proposed action; the server revalidates the invoice and approval before execution.
 - **Money movement is not inferred:** a checkout is only an order. An invoice is marked paid only after server-side PayPal Sandbox capture verification or a verified signed webhook.
 - **Safety is part of the workflow:** disputed and paid invoices are blocked; recent reminders can trigger a wait recommendation; untrusted invoice notes cannot instruct the agent.
+- **Recovery outcomes are visible:** the currency-grouped outcome ledger separates PayPal Sandbox captures verified by the server from manual/demo paid records, and counts operator-confirmed reminders without pretending they are delivery receipts.
+- **Payment reconciliation is review-first:** a bounded CSV preview classifies exact invoice/amount/currency matches, missing or pending provider status, duplicates, disputes and mismatches. It never marks an invoice paid; server-verified PayPal capture remains authoritative.
+- **Risk Radar:** deterministic, evidence-linked review signals surface disputes, overdue exposure, duplicate invoice references, repeated contact pressure, amount outliers and multiple active orders. Scores prioritize human review; they are not fraud probabilities.
+- **Payment anomaly monitor:** checks the local order ledger for duplicate provider references, amount/currency mismatches, orphaned orders, stale open orders and multiple active orders. These checks do not assert fraud or replace PayPal's provider state.
+- **Recovery what-if simulator:** previews whether a reminder or Sandbox checkout proposal would pass policy, identifies blockers and shows the approval/verification steps. It never creates a draft, proposal, approval, checkout or audit record.
+- **Deterministic recovery safety lab:** 22 deterministic checks exercise the same policy, payment-verification and approval-snapshot functions used by the application: disputed/paid invoice blocks, duplicate checkout, contact pressure, duplicate invoice references, duplicate provider IDs, amount/currency mismatch, orphan/stale orders, completed versus pending PayPal capture evidence, wrong-invoice/amount/currency rejection, exact provider-order ID binding, rejection of multiple purchase units or captures, missing capture-ID rejection, and approval-snapshot invalidation after material invoice changes. The lab makes no AI or provider calls and mutates no records; it is a policy regression demonstration, not a penetration test.
+- **Command Centre and Trust Centre:** one judge walkthrough surfaces portfolio risk, payment anomalies, safe simulation, repeatable safety checks and the live environment's security/integration configuration without exposing secrets.
 
 The product's core differentiator is the full chain from portfolio triage to evidence-backed approval to verified payment—not a claim that an LLM autonomously controls money.
+
+## Competitive intelligence and safe simulation
+
+The **Command Centre** combines read-only portfolio risk, order-ledger anomaly checks and a recovery what-if simulation. The **Trust Centre** reports whether controls are configured and lists known gaps; it does not expose secret values.
+
+The simulation supports `draft_reminder` and `create_checkout` policy previews. It checks invoice status, disputes, duplicate invoice references, contact pressure and active payment orders. A green result means only **eligible for human review**. It is not approval, execution, a PayPal API call or a promise of recovery.
+
+The anomaly monitor checks stored order references and invoice associations. It is a consistency monitor, not a fraud model. A flagged item should be investigated against the provider dashboard and source documents.
 
 ## Judge evaluation map
 
@@ -45,7 +61,7 @@ PayPilot is designed for small service businesses, freelancers and boutique agen
 
 Recent U.S. research illustrates the problem: Intuit QuickBooks' 2026 report says 59% of surveyed businesses had invoices overdue by 30+ days and businesses with unpaid invoices were owed $17,700 on average ([QuickBooks](https://quickbooks.intuit.com/r/small-business-data/small-business-late-payments-report-2026/)). Bluevine's February 2026 survey of 1,052 U.S. small-business owners found 29% delayed their own pay because customers paid late and 17% missed or nearly missed payroll ([Bluevine](https://www.bluevine.com/newsroom/late-payment-gap-survey-press-release)). These are U.S. survey findings, not global estimates.
 
-**Impact honesty:** these statistics establish the problem, not PayPilot's effectiveness. Our demo proves a controlled workflow and a PayPal Sandbox capture; it does not prove improved recovery rates, faster payment or hours saved. See [`docs/IMPACT_MODEL.md`](docs/IMPACT_MODEL.md) for the measurement plan and pilot metrics.
+**Impact honesty:** these statistics establish the problem, not PayPilot's effectiveness. The current live staging snapshot shows **zero PayPal-verified captures** and the Acme Studio invoice remains open. The application implements server-side PayPal Sandbox capture verification and the Safety Lab tests its evidence rules, but those tests are not a live capture. We do not claim improved recovery rates, faster payment or hours saved. See [`docs/IMPACT_MODEL.md`](docs/IMPACT_MODEL.md) for the measurement plan and pilot metrics.
 
 ## Why this is an agent, not just a chatbot
 
@@ -83,39 +99,41 @@ Observe → Analyze → Plan → Request approval → Execute allowlisted action
 
 - Uses PayPal Orders v2 in Sandbox only.
 - The browser does not decide that an invoice is paid. The server verifies the capture status, amount, currency and invoice association before updating records.
-- The real webhook endpoint verifies PayPal's webhook signature through PayPal's verification API, requires the configured Sandbox webhook ID, and handles duplicate event IDs to reduce replay/double-processing risk.
+- Real PayPal webhook events are verified through PayPal's verification API with the configured Sandbox webhook ID; mock simulator events use PayPal's documented raw-body cryptographic verification with the special `WEBHOOK_ID` and return before payment settlement. Duplicate real event IDs are handled idempotently.
 - The webhook route fails closed when required configuration or signature headers are missing or verification fails.
-- Demo webhook simulation is isolated to demo invoices and is not a substitute for a real signed webhook.
+- The PayPal mock simulator test records only a verification timestamp/event reference; it never changes invoices, orders or payment status and is not a substitute for a real transaction webhook.
 - Never commit PayPal credentials, webhook IDs or Gemini API keys. Configure them as server environment variables.
 
 ### Verification status (distinguish manual checks from automated tests)
 
 | Check | Evidence/status |
 |---|---|
-| Sandbox checkout, buyer approval, server capture and invoice marked paid | Maintainer reports a successful end-to-end Sandbox payment on the deployed app; the UI showed the capture reference, server verification and paid invoice. |
-| Real PayPal webhook delivery | Maintainer reports completing an end-to-end Sandbox webhook check on 4 November 2026. The repository's automated webhook tests still use a mocked PayPal signature-verification response; those tests do not independently prove live webhook delivery. |
-| Webhook signature verification, missing configuration/headers, replay handling and retry behaviour | Automated tests with a mocked verifier. |
-| Payment validation and agent safety rules | Automated tests with mocked PayPal/Gemini services. |
-| Current CI | 109/109 tests passed on main commit `3bec43b` (8 Nov 2026); later documentation-only benchmark commit `366213a` also passed CI. |
-| Durable database, authentication and tenant isolation | Not implemented. |
+| Staging homepage and health endpoint | Read-only browser check returned HTTP 200 on 12 November 2026. Health reports `ok: true`, PostgreSQL tenant-scoped storage, Gemini configured, PayPal Sandbox configured, signed-session auth enabled and Brevo configured. |
+| Gemini assistant read-only browser check | Live staging test returned invoice-specific overdue and dispute evidence and did not create proposals, approvals, payment links or execute actions. |
+| Portfolio sweep browser check | One live sweep successfully staged a pending reminder-draft proposal for Greenleaf Co; no approval, execution or payment was performed. |
+| PostgreSQL persistence and tenant isolation | GitHub Actions PostgreSQL integration workflow run `43035812286` completed successfully, including tenant isolation, concurrent writes, cross-connection persistence and HTTP route integration. |
+| Private account/session flows | The same integration workflow passed private-account/session migrations and restricted lookup checks; live staging health reports authentication enabled. |
+| PayPal Sandbox configuration | Live staging health reports PayPal Sandbox configured. The current staging ledger shows zero verified PayPal captures; a prior operator-reported test is not represented in the current live invoice state. No new payment was initiated during this verification. |
+| PayPal webhook configuration and delivery | A PayPal mock simulator event reached the actual staging callback and its cryptographic signature verified. The handler acknowledges it as a simulator-only event and does not settle an invoice. A real buyer-approved capture webhook remains unverified. |
+| Password-reset email configuration and delivery | Brevo reports an active verified sender and staging health reports the provider configured. No test email was sent during this audit. **Inbox delivery remains unverified.** |
 
 The manual Sandbox check is an operator-reported test, not a guarantee of production payment processing. Do not use this demo for real funds.
 
 ## Judge quick start
 
-1. Open the [hosted demo](https://paypilot-ai-1qw8.onrender.com/). The free host may need up to a minute to wake.
+1. Open the [staging demo](https://paypilot-ai-pg-staging.onrender.com/). The free host may need up to a minute to wake.
 2. Use **Load demo scenarios** in Mission Control if the demo data is not already loaded.
 3. Follow the suggested walkthrough in [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
 4. For checkout, use a PayPal Sandbox buyer account—not a personal/live PayPal account. Do not use real payment credentials.
 5. Inspect the invoice timeline and Activity tab to see the audit trail.
 
-The public demo is restricted and uses shared demo data. Judges should not enter personal, confidential or real customer information.
+The public judge demo uses shared synthetic data in read-only mode. Public state-changing actions are disabled. Judges should not enter personal, confidential or real customer information.
 
 ## Demo scenarios
 
 1. **Portfolio Autopilot Sweep:** evaluate the invoice portfolio and queue proposals for human review.
 2. **AI Recovery Assistant:** ask about receivables, overdue risk and disputed accounts; deterministic tools provide the underlying data.
-3. **Overdue invoice:** request approval for a reminder draft, approve it, confirm that you sent it, then create a Sandbox checkout and complete a Sandbox buyer payment.
+3. **Overdue invoice:** use the read-only recovery simulator to preview a reminder and checkout. Inspect the stale Sandbox order warning and explain that an order is not a payment. The current staging ledger has zero verified captures; do not claim a successful payment in the video.
 4. **Disputed invoice:** open Harbor Dental; the agent recommends human review and blocks collection.
 5. **Already paid:** open Lumen Books or revisit a paid invoice; another reminder/checkout is blocked and payment evidence is shown.
 6. **Webhook demonstration:** the demo-only simulated webhook path is available for demo invoices. Real webhook handling is a separate signed endpoint.
@@ -145,7 +163,11 @@ See [.env.example](.env.example). Configure values only in your local environmen
 | `PAYPAL_WEBHOOK_ID` | Sandbox webhook ID used for signature verification |
 | `GEMINI_API_KEY` | Google Gemini API access |
 | `GEMINI_MODEL` | Optional model selection |
+| `BREVO_API_KEY` or `RESEND_API_KEY`, `EMAIL_FROM` | Optional password-reset email provider; sender address must be verified with the provider |
 | `APP_BASE_URL`, `SENDER_NAME` | Optional application/reminder metadata |
+| `PG_STORAGE_MODE=judge_demo`, `DATABASE_URL`, `JUDGE_DEMO_TENANT_ID` | PostgreSQL-backed judge demo; pre-provision the demo tenant |
+| `ACCOUNT_PROVISIONING_DATABASE_URL` | Separate least-privilege connection for account + tenant creation and account lookup |
+| `SESSION_SECRET` | At least 32 bytes of high-entropy secret used to sign seven-day sessions; generate with `openssl rand -base64 48` |
 
 **Security:** do not paste secrets into GitHub issues, screenshots, public documentation or chat messages. Use demo data only. Free-tier AI provider terms may include use of prompts for service improvement; never submit personal or confidential data.
 
@@ -165,8 +187,11 @@ lib/priority.js  Dates, scoring and recovery queue
 lib/payments.js  Capture verification and paid-state transition
 lib/paypal.js    PayPal Orders v2 and webhook verification client (Sandbox)
 lib/ai.js        Gemini calls, fallback, timeout, backoff and output validation
-lib/store.js     JSON persistence and audit log
+lib/store.js     legacy local JSON store; lib/postgres-store.js request-scoped transactional tenant state; lib/postgres-repository.js account/session/reset/order persistence
 lib/summary.js   Multi-currency accounting summaries
+lib/ops-intelligence.js Payment-ledger anomaly checks and read-only recovery simulation
+lib/trust-status.js Explicit configuration vs provider-delivery verification state
+lib/safety-lab.js Deterministic, read-only recovery policy regression checks
 lib/ratelimit.js Sliding-window rate limiters
 ```
 
@@ -181,13 +206,15 @@ The public repository was created on 25 October 2026, during the PayPal AI Hacka
 
 ## Known limitations
 
-- No authentication, user accounts or tenant isolation; restricted shared demo only. The planned tenant-isolation architecture and release gates are documented in [docs/TENANT_ISOLATION_PLAN.md](docs/TENANT_ISOLATION_PLAN.md).
-- JSON-file storage is not durable on ephemeral/free hosting and may reset after a restart.
-- Rate-limit counters are in memory.
-- No email/SMS delivery; reminder messages are drafts for the operator to send.
+- Public staging judge-demo actions are enabled and operate only on shared synthetic records; the public reset control is disabled. Private account flows are available when the configured database roles and session settings pass health checks.
+- Brevo is configured on staging with an active verified sender, but password-reset inbox delivery has not been independently verified. No test email has been sent in this audit.
+- PayPal webhook ID is configured on staging. A signed mock simulator callback has been verified; it does not represent a real capture. A real Sandbox transaction webhook still needs independent verification.
+- Public judge-demo actions can change shared synthetic records; public reset and demo-admin controls are disabled.
+- Rate-limit counters are in memory and are not distributed across instances.
+- Reminder messages are drafts for the operator to send; the app does not send reminder email/SMS.
 - PayPal Sandbox only; no real-money transactions.
 - One currency per invoice.
-- Automated tests mock PayPal and Gemini network calls.
+- Automated tests mock external PayPal and Gemini network calls; a passing test suite does not prove live provider delivery.
 
 ## License
 
