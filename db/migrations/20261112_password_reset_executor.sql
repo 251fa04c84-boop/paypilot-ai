@@ -40,7 +40,7 @@ BEGIN
 END
 $membership$;
 
-GRANT USAGE, CREATE ON SCHEMA public TO paypilot_reset_executor;
+GRANT USAGE ON SCHEMA public TO paypilot_reset_executor;
 GRANT SELECT (user_id, tenant_id, email, email_normalized)
   ON public.paypilot_users TO paypilot_reset_executor;
 GRANT UPDATE (password_hash, password_updated_at)
@@ -163,6 +163,16 @@ BEGIN
 END;
 $function$;
 
+-- The role must own the objects used by its SECURITY DEFINER functions.
+ALTER TABLE public.paypilot_password_reset_tokens OWNER TO paypilot_reset_executor;
+ALTER TABLE IF EXISTS public.paypilot_password_resets OWNER TO paypilot_reset_executor;
+ALTER FUNCTION public.paypilot_create_password_reset(TEXT, TEXT, TIMESTAMPTZ) OWNER TO paypilot_reset_executor;
+ALTER FUNCTION public.paypilot_complete_password_reset(TEXT, TEXT, TIMESTAMPTZ) OWNER TO paypilot_reset_executor;
+ALTER FUNCTION public.paypilot_invalidate_password_reset(TEXT) OWNER TO paypilot_reset_executor;
+
+-- Switch to the non-login function owner for its object ACLs and RLS policies.
+SET LOCAL ROLE paypilot_reset_executor;
+
 -- Keep direct table access denied even if a future grant is accidentally added.
 -- The BYPASSRLS function owner can still operate through the narrowly scoped functions.
 ALTER TABLE public.paypilot_password_reset_tokens ENABLE ROW LEVEL SECURITY;
@@ -183,13 +193,6 @@ BEGIN
   END IF;
 END
 $legacy_rls$;
-
--- The role must own the objects used by its SECURITY DEFINER functions.
-ALTER TABLE public.paypilot_password_reset_tokens OWNER TO paypilot_reset_executor;
-ALTER TABLE IF EXISTS public.paypilot_password_resets OWNER TO paypilot_reset_executor;
-ALTER FUNCTION public.paypilot_create_password_reset(TEXT, TEXT, TIMESTAMPTZ) OWNER TO paypilot_reset_executor;
-ALTER FUNCTION public.paypilot_complete_password_reset(TEXT, TEXT, TIMESTAMPTZ) OWNER TO paypilot_reset_executor;
-ALTER FUNCTION public.paypilot_invalidate_password_reset(TEXT) OWNER TO paypilot_reset_executor;
 
 -- Remove direct table access from every application/provisioning role. The
 -- non-login function owner is the only principal that can access token rows.
