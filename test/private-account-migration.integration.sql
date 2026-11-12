@@ -92,21 +92,23 @@ BEGIN
   IF pg_catalog.pg_has_role('paypilot_account_provisioner', 'paypilot_reset_executor', 'MEMBER') THEN
     RAISE EXCEPTION 'account provisioner must not be a member of the reset function owner role';
   END IF;
-  IF EXISTS (
-    SELECT 1 FROM pg_catalog.pg_auth_members m
-    WHERE m.roleid = 'paypilot_reset_executor'::regrole
-      AND m.member = 'paypilot_app'::regrole
-      AND m.inherit_option
-  ) THEN
-    RAISE EXCEPTION 'administration role must not inherit reset-executor privileges';
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_auth_members m
-    WHERE m.roleid = 'paypilot_reset_executor'::regrole
-      AND m.member = 'paypilot_app'::regrole
-      AND m.set_option
-  ) THEN
-    RAISE EXCEPTION 'administration role needs explicit SET access to transfer object ownership';
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'paypilot_app') THEN
+    IF EXISTS (
+      SELECT 1 FROM pg_catalog.pg_auth_members m
+      WHERE m.roleid = 'paypilot_reset_executor'::regrole
+        AND m.member = 'paypilot_app'::regrole
+        AND m.inherit_option
+    ) THEN
+      RAISE EXCEPTION 'administration role must not inherit reset-executor privileges';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_auth_members m
+      WHERE m.roleid = 'paypilot_reset_executor'::regrole
+        AND m.member = 'paypilot_app'::regrole
+        AND m.set_option
+    ) THEN
+      RAISE EXCEPTION 'administration role needs explicit SET access to transfer object ownership';
+    END IF;
   END IF;
 
   SELECT c.relrowsecurity, c.relforcerowsecurity
