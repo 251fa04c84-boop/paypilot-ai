@@ -7,6 +7,7 @@ const { createPayPal, crc32 } = require('../lib/paypal');
 function response(status, value, contentLength) {
   return {
     status,
+    ok: status >= 200 && status < 300,
     headers: { get(name) { return name.toLowerCase() === 'content-length' ? (contentLength || null) : null; } },
     async text() { return typeof value === 'string' ? value : JSON.stringify(value); },
   };
