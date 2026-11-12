@@ -28,6 +28,11 @@ function fakeApp(overrides = {}) {
     configured: () => true,
     createOrder: async ({ invoice }) => ({ id: `ord-${invoice.id}`, approveUrl: `https://fake.paypal.com/checkout?id=ord-${invoice.id}` }),
     verifyWebhookSignature: async () => true,
+    getOrder: async (id) => {
+      const order = store.db.orders.find((o) => o.orderId === id);
+      const inv = store.db.invoices.find((i) => i.id === order.invoiceId);
+      return { id, intent: 'CAPTURE', status: 'APPROVED', purchase_units: [{ reference_id: inv.id, amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) } }] };
+    },
     captureOrder: async (id) => {
       const order = store.db.orders.find((o) => o.orderId === id);
       const inv = store.db.invoices.find((i) => i.id === order.invoiceId);
