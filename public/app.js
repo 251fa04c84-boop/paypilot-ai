@@ -689,7 +689,7 @@ async function viewCommandCentre() {
       h('p', { class: 'muted small' }, safety.disclaimer),
       h('div', { class: 'row' }, pill(safety.failed === 0 ? 'ok' : 'bad', safety.passed + ' / ' + safety.total + ' passed'), h('span', { class: 'muted small' }, 'No AI calls · no provider calls · no mutations')),
       ...safety.checks.map((x) => h('div', { class: 'sep row' }, h('span', {}, x.name), pill(x.status === 'passed' ? 'ok' : 'bad', x.status.toUpperCase())))),
-    h('section', { class: 'card' }, h('strong', {}, '3 · Recovery what-if simulator'),
+    h('section', { class: 'card' }, h('strong', {}, '4 · Recovery what-if simulator'),
       h('p', { class: 'muted small' }, 'Select a synthetic or workspace invoice and preview the policy outcome. This does not create a draft, checkout, approval, proposal or audit event.'),
     ));
   const selector = h('select', { 'aria-label': 'Choose invoice' }, ...invoices.map((inv) => h('option', { value: inv.id }, inv.number + ' · ' + inv.client + ' · ' + inv.status)));
@@ -709,7 +709,7 @@ async function viewCommandCentre() {
     } catch (e) { result.textContent = 'Simulation unavailable: ' + e.message; }
   } }, 'Run safe simulation');
   main.append(h('section', { class: 'card' }, h('div', { class: 'grid2' }, selector, action), h('div', { class: 'actions' }, run), result));
-  main.append(h('section', { class: 'card' }, h('strong', {}, '4 · Trust and verification'),
+  main.append(h('section', { class: 'card' }, h('strong', {}, '5 · Trust and verification'),
     h('p', { class: 'muted small' }, 'Inspect explicit security controls, integration configuration and known gaps.'),
     h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => switchTab('trust') }, 'Open Trust Centre')),
     h('p', { class: 'muted small' }, 'PayPal environment: ' + health.paypal.environment + ' · Storage: ' + health.storage)));
@@ -729,13 +729,13 @@ async function viewTrustCentre() {
     ['Optional AI configured', c.aiConfigured],
     ['Email provider configured', c.emailConfigured],
     ['Email delivery independently verified', c.emailDeliveryVerified, 'Verified', 'Not independently verified'],
-    ['Public demo mutations', c.publicDemoMutations, 'Enabled — shared demo data', 'Disabled'],
+    ['Public demo mutations', c.publicDemoMutations, 'Enabled — shared demo data', 'Disabled', 'warn'],
   ];
   main.replaceChildren(h('h2', {}, 'Trust centre'),
     h('p', { class: 'muted' }, 'A transparent control inventory. Configured credentials, verified provider delivery and shared-demo exposure are shown separately. This endpoint never returns credentials, tokens or secret values.'),
     h('section', { class: 'card glow' }, h('strong', {}, 'Environment'), h('p', {}, trust.environment), h('p', { class: 'muted small' }, trust.storage)),
     h('section', { class: 'card' }, h('strong', {}, 'Security and integration controls'),
-      ...rows.map(([label, value, yes = 'Configured', no = 'Not configured']) => h('div', { class: 'sep row' }, h('span', {}, label), pill(value === true ? 'ok' : value === false ? 'warn' : 'none', typeof value === 'boolean' ? (value ? yes : no) : value)))),
+      ...rows.map(([label, value, yes = 'Configured', no = 'Not configured', tone]) => h('div', { class: 'sep row' }, h('span', {}, label), pill(tone || (value === true ? 'ok' : value === false ? 'warn' : 'none'), typeof value === 'boolean' ? (value ? yes : no) : value)))),
     h('section', { class: 'card' }, h('strong', {}, 'Enforced boundaries'), h('ul', { class: 'list' }, trust.boundaries.map((x) => h('li', {}, x)))),
     h('section', { class: 'card warnbox' }, h('strong', {}, 'Known configuration gaps'),
       trust.caveats.length ? h('ul', { class: 'list' }, trust.caveats.map((x) => h('li', {}, x))) : h('p', {}, 'No known configuration gaps reported by this environment.')));
