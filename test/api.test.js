@@ -6,21 +6,28 @@ const { createApp } = require('../server');
 
 function fakePayPal(script = {}) {
   let n = 0; const calls = { create: 0, getOrder: 0, capture: 0 };
+  const created = new Map();
+  const invoiceFor = (id) => typeof script.invoice === 'function' ? script.invoice() : created.get(id);
   return {
     calls, configured: () => script.configured !== false,
-    createOrder: async ({ invoice }) => { calls.create++; const id = `ORDER${++n}`; return { id, approveUrl: `https://sandbox.paypal.test/approve/${id}`, invoice }; },
+    createOrder: async ({ invoice }) => {
+      calls.create++; const id = `ORDER${++n}`; created.set(id, invoice);
+      return { id, approveUrl: `https://sandbox.paypal.test/approve/${id}`, invoice };
+    },
     getOrder: async (id) => {
       calls.getOrder++;
-      const inv = script.invoice();
+      const inv = invoiceFor(id);
       if (typeof script.orderResponse === 'function') return script.orderResponse(id, inv);
       if (script.orderResponse) return script.orderResponse;
+      if (!inv) throw new Error('Fake PayPal order not found.');
       return { id, intent: 'CAPTURE', status: script.orderStatus || 'APPROVED', purchase_units: [{ reference_id: inv.id, amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) } }] };
     },
     captureOrder: async (id) => {
       calls.capture++;
       if (script.notApproved) { const e = new Error('The buyer has not approved this order in PayPal yet.'); e.code = 'NOT_APPROVED'; throw e; }
-      const inv = script.invoice();
-      return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [Object.assign({ id: 'CAP-' + id, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }, script.cap || {})] } }] };
+      const inv = invoiceFor(id);
+      if (!inv) throw new Error('Fake PayPal order not found.');
+      return { id, intent: 'CAPTURE', status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) }, payments: { captures: [Object.assign({ id: 'CAP-' + id, status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }, script.cap || {})] } }] };
     },
   };
 }
@@ -159,8 +166,9 @@ test('PayPal: success path verifies server-side, and repeated capture does not c
 });
 
 test('PayPal: capture calls PayPal exactly once even when asked repeatedly', async () => {
-  const pp = fakePayPal({ invoice: () => null });
-  const t = await boot({ paypal: Object.assign(pp, { captureOrder: async (id) => { pp.calls.capture++; const inv = t.app.db.invoices[0]; return { status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, payments: { captures: [{ id: 'C', status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; } }) });
+  let t;
+  const pp = fakePayPal({ invoice: () => t.app.db.invoices[0] });
+  t = await boot({ paypal: Object.assign(pp, { captureOrder: async (id) => { pp.calls.capture++; const inv = t.app.db.invoices[0]; return { id, intent: 'CAPTURE', status: 'COMPLETED', purchase_units: [{ reference_id: inv.id, amount: { currency_code: inv.currency, value: inv.amount.toFixed(2) }, payments: { captures: [{ id: 'C', status: 'COMPLETED', amount: { value: inv.amount.toFixed(2), currency_code: inv.currency } }] } }] }; } }) });
   try {
     const id = (await t.call('POST', '/api/invoices', NEW)).json.id; await t.call('POST', `/api/invoices/${id}/pay`);
     const orderId = t.app.db.orders[0].orderId;
@@ -193,7 +201,7 @@ test('PayPal: not approved, unknown order, tampered amount, pending, cancel', as
   try { // PayPal says 1.00 was captured but invoice is 120.50
     const id = (await t.call('POST', '/api/invoices', NEW)).json.id; await t.call('POST', `/api/invoices/${id}/pay`);
     const r = await t.call('POST', '/api/paypal/capture', { orderId: t.app.db.orders[0].orderId });
-    assert.equal(r.json.outcome, 'failed'); assert.equal(t.app.db.invoices[0].status, 'open');
+    assert.equal(r.status, 409); assert.equal(t.app.db.invoices[0].status, 'open'); assert.equal(t.app.db.orders[0].status, 'created'); assert.equal(t.app.db.actions.at(-1).type, 'capture_blocked_preflight');
   } finally { t.close(); }
   t = await boot({ paypal: fakePayPal({ invoice: () => t.app.db.invoices[0], cap: { status: 'PENDING' } }) });
   try {
@@ -492,5 +500,39 @@ test('payment reconciliation preview is read-only and requires completed provide
     assert.match(preview.json.results[0].reason, /review candidate only/);
     assert.equal(JSON.stringify({ invoices: t.app.db.invoices, actions: t.app.db.actions, orders: t.app.db.orders }), before);
     assert.equal((await t.call('POST', '/api/reconciliation/preview', { csv: 'invoice,amount\\nINV-1,10' })).status, 400);
+  } finally { t.close(); }
+});
+
+test('PayPal pre-capture gate blocks a tampered order amount before capture is called', async () => {
+  let t;
+  const pp = fakePayPal({ invoice: () => t.app.db.invoices[0], orderResponse: (id, inv) => ({
+    id, intent: 'CAPTURE', status: 'APPROVED',
+    purchase_units: [{ reference_id: inv.id, amount: { currency_code: inv.currency, value: '999.00' } }],
+  }) });
+  t = await boot({ paypal: pp });
+  try {
+    const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
+    await t.call('POST', `/api/invoices/${id}/pay`);
+    const orderId = t.app.db.orders[0].orderId;
+    const result = await t.call('POST', '/api/paypal/capture', { orderId });
+    assert.equal(result.status, 409);
+    assert.equal(pp.calls.getOrder, 1);
+    assert.equal(pp.calls.capture, 0);
+    assert.equal(t.app.db.invoices[0].status, 'open');
+    assert.equal(t.app.db.actions.at(-1).type, 'capture_blocked_preflight');
+  } finally { t.close(); }
+});
+
+test('PayPal pre-capture gate blocks an unapproved order before capture is called', async () => {
+  let t;
+  const pp = fakePayPal({ invoice: () => t.app.db.invoices[0], orderStatus: 'PAYER_ACTION_REQUIRED' });
+  t = await boot({ paypal: pp });
+  try {
+    const id = (await t.call('POST', '/api/invoices', NEW)).json.id;
+    await t.call('POST', `/api/invoices/${id}/pay`);
+    const result = await t.call('POST', '/api/paypal/capture', { orderId: t.app.db.orders[0].orderId });
+    assert.equal(result.status, 409);
+    assert.equal(pp.calls.capture, 0);
+    assert.equal(t.app.db.invoices[0].status, 'open');
   } finally { t.close(); }
 });
