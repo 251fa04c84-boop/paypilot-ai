@@ -68,6 +68,8 @@ function createApp(opts = {}) {
   // Public judge workflows mutate the shared demo database. Require an explicit production opt-in.
   // Keep verified PayPal callbacks available even when browser-facing demo mutations are disabled.
   const publicDemoMutationsEnabled = env.ENABLE_PUBLIC_DEMO_MUTATIONS === 'true' || (!isProduction && env.ENABLE_PUBLIC_DEMO_MUTATIONS !== 'false');
+  const webhookSimulatorEnabled = isProduction && baseUrl === 'https://paypilot-ai-pg-staging.onrender.com' && env.PAYPAL_WEBHOOK_SIMULATOR_ENABLED === 'true';
+  let webhookSimulatorTriggered = false;
   const inflight = new Set();
   const webhookInflight = new Set();
   const backoffMs = opts.backoffMs === undefined ? 300 : opts.backoffMs;
@@ -407,9 +409,11 @@ function createApp(opts = {}) {
       aiConfigured: Boolean(aiKey),
       emailConfigured: Boolean(emailProvider.configured),
       publicDemoMutationsEnabled,
+      webhookSimulatorVerified: Boolean(settings.webhookSimulatorVerifiedAt),
     });
     return { json: {
       environment: 'PayPal Sandbox only',
+      webhookSimulatorVerifiedAt: settings.webhookSimulatorVerifiedAt || null,
       storage: pgMode ? 'PostgreSQL tenant-scoped' : 'JSON file — not durable on free hosting',
       controls: trust.controls,
       boundaries: [
@@ -423,6 +427,36 @@ function createApp(opts = {}) {
       caveats: trust.caveats,
     } };
   });
+  route('POST', '/api/paypal/webhook-simulator', async ({ body, headers }) => {
+    if (!webhookSimulatorEnabled) throw new HttpError(404, 'PayPal webhook simulator is disabled.');
+    const eventId = body && body.id;
+    const eventType = body && body.event_type;
+    if (typeof eventId !== 'string' || !eventId.trim() || eventType !== 'PAYMENT.CAPTURE.COMPLETED' || !body.resource) {
+      throw new HttpError(400, 'Invalid PayPal simulator event.');
+    }
+    if (typeof paypal.verifySimulatorWebhookSignature !== 'function') {
+      throw new HttpError(503, 'PayPal simulator signature verification is unavailable.');
+    }
+    const signature = {
+      authAlgo: headers['paypal-auth-algo'],
+      certUrl: headers['paypal-cert-url'],
+      transmissionId: headers['paypal-transmission-id'],
+      transmissionSig: headers['paypal-transmission-sig'],
+      transmissionTime: headers['paypal-transmission-time'],
+      rawBody: body.__rawBody,
+    };
+    if (Object.values(signature).some((value) => value == null || value === '')) {
+      throw new HttpError(401, 'Required PayPal simulator signature headers are missing.');
+    }
+    const verified = await paypal.verifySimulatorWebhookSignature(signature);
+    if (!verified) throw new HttpError(401, 'PayPal simulator signature verification failed.');
+    settings.webhookSimulatorVerifiedAt = iso();
+    settings.webhookSimulatorEventId = eventId;
+    settings.webhookSimulatorEventType = eventType;
+    store.save();
+    return { json: { received: true, verified: true, simulation: true, eventId, eventType } };
+  });
+
   route('POST', '/api/reconciliation/preview', ({ body }) => {
     if (typeof body.csv !== 'string') throw new HttpError(400, 'Provide CSV text in the csv field.');
     try { return { json: { mode: 'preview_only', results: reconcile(body.csv, db.invoices) } }; }
@@ -915,8 +949,13 @@ function createApp(opts = {}) {
       req.on('end', () => {
         if (tooLarge) return;
         if (!chunks.length) return resolve({});
-        try { const v = JSON.parse(Buffer.concat(chunks).toString('utf8')); resolve(v && typeof v === 'object' ? v : {}); }
-        catch (_) { reject(new HttpError(400, 'Invalid JSON.')); }
+        const rawBody = Buffer.concat(chunks).toString('utf8');
+        try {
+          const parsed = JSON.parse(rawBody);
+          const value = parsed && typeof parsed === 'object' ? parsed : {};
+          Object.defineProperty(value, '__rawBody', { value: rawBody, enumerable: false });
+          resolve(value);
+        } catch (_) { reject(new HttpError(400, 'Invalid JSON.')); }
       });
       req.on('error', (e) => { if (!tooLarge) reject(e); });
     });
@@ -988,7 +1027,7 @@ function createApp(opts = {}) {
           }
         }
       }
-      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !authPath && (!tenantContext || tenantContext.kind !== 'private') && !['/api/paypal/webhook', '/api/paypal/capture'].includes(url.pathname)) {
+      if (req.method !== 'GET' && req.method !== 'HEAD' && !publicDemoMutationsEnabled && !authPath && (!tenantContext || tenantContext.kind !== 'private') && !['/api/paypal/webhook', '/api/paypal/capture', '/api/paypal/webhook-simulator'].includes(url.pathname)) {
         throw new HttpError(403, 'Interactive judge-demo actions are disabled on this deployment.');
       }
       // No cookie means the explicitly configured judge demo. A valid cookie means
@@ -1015,7 +1054,20 @@ function createApp(opts = {}) {
       res.end(JSON.stringify(Object.assign({ error: status === 500 ? 'Internal error.' : e.message }, e.extra || {})));
     }
   });
-  return { server, port, db, store, seedDemo, pgMode, repository };
+  async function runWebhookSimulator() {
+    if (!webhookSimulatorEnabled || env.PAYPAL_WEBHOOK_SIMULATOR_ON_START !== 'true' ||
+        webhookSimulatorTriggered || settings.webhookSimulatorVerifiedAt) return null;
+    if (typeof paypal.simulateWebhookEvent !== 'function') throw new Error('PayPal Sandbox simulator client is unavailable.');
+    webhookSimulatorTriggered = true;
+    const result = await paypal.simulateWebhookEvent({
+      url: baseUrl + '/api/paypal/webhook-simulator',
+      eventType: 'PAYMENT.CAPTURE.COMPLETED',
+    });
+    console.log('PayPal Sandbox webhook simulator queued:', result.status);
+    return result;
+  }
+
+  return { server, port, db, store, seedDemo, pgMode, repository, runWebhookSimulator };
 }
 
 if (require.main === module) {
@@ -1035,7 +1087,10 @@ if (require.main === module) {
         console.log('Startup: Automatically seeded demo invoices for judge review.');
       } catch (_) {}
     }
-    app.server.listen(app.port, () => console.log(`PayPilot AI listening on port ${app.port}`));
+    app.server.listen(app.port, () => {
+      console.log(`PayPilot AI listening on port ${app.port}`);
+      app.runWebhookSimulator().catch((error) => console.error('PayPal Sandbox webhook simulator failed:', error.message));
+    });
   })().catch((error) => {
     console.error('Startup failed:', error.message);
     process.exitCode = 1;
