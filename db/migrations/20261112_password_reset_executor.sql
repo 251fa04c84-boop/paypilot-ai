@@ -40,7 +40,7 @@ BEGIN
 END
 $membership$;
 
-GRANT USAGE ON SCHEMA public TO paypilot_reset_executor;
+GRANT USAGE, CREATE ON SCHEMA public TO paypilot_reset_executor;
 GRANT SELECT (user_id, tenant_id, email, email_normalized)
   ON public.paypilot_users TO paypilot_reset_executor;
 GRANT UPDATE (password_hash, password_updated_at)
@@ -169,6 +169,7 @@ ALTER TABLE IF EXISTS public.paypilot_password_resets OWNER TO paypilot_reset_ex
 ALTER FUNCTION public.paypilot_create_password_reset(TEXT, TEXT, TIMESTAMPTZ) OWNER TO paypilot_reset_executor;
 ALTER FUNCTION public.paypilot_complete_password_reset(TEXT, TEXT, TIMESTAMPTZ) OWNER TO paypilot_reset_executor;
 ALTER FUNCTION public.paypilot_invalidate_password_reset(TEXT) OWNER TO paypilot_reset_executor;
+REVOKE CREATE ON SCHEMA public FROM paypilot_reset_executor;
 
 -- Switch to the non-login function owner for its object ACLs and RLS policies.
 SET LOCAL ROLE paypilot_reset_executor;
